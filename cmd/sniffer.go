@@ -68,9 +68,6 @@ func scanAction(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	dhtCli, err := snifferConfig.CreateDHTClient(ctx)
 	if err != nil {
 		return err

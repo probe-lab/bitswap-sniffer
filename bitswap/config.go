@@ -36,7 +36,7 @@ func (c *SnifferConfig) Validate() error {
 		return fmt.Errorf("invalid libp2p-host: %s", c.Libp2pHost)
 	}
 	if c.Libp2pPort <= 0 && c.Libp2pPort > (2^16) {
-		return fmt.Errorf("invalid libp2p-port: %s", c.Libp2pPort)
+		return fmt.Errorf("invalid libp2p-port: %d", c.Libp2pPort)
 	}
 	if c.DialTimeout == time.Duration(0) {
 		return fmt.Errorf("invlaid dial timeout: %s", c.DialTimeout)
@@ -98,6 +98,9 @@ func (c *SnifferConfig) DHTClientOptions() ([]kaddht.Option, error) {
 func (c *SnifferConfig) CreateDHTClient(ctx context.Context) (*kaddht.IpfsDHT, error) {
 	// generate the libp2p host
 	hostOptions, err := c.Libp2pOptions()
+	if err != nil {
+		return nil, err
+	}
 	h, err := libp2p.New(hostOptions...)
 	if err != nil {
 		return nil, err

@@ -78,6 +78,9 @@ func NewSniffer(ctx context.Context, dhtCli *kaddht.IpfsDHT, config *SnifferConf
 			Interval: 15 * time.Second,
 		},
 	)
+	if err != nil {
+		return nil, err
+	}
 
 	return &Sniffer{
 		log:       log,

@@ -9,7 +9,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/probe-lab/bitswap-sniffer/bitswap"
 	"github.com/sirupsen/logrus"
-	log "github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v3"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
@@ -74,8 +73,8 @@ var rootFlags = []cli.Flag{
 func main() {
 	// Set log level from environment variable
 	if level := os.Getenv("LOGRUS_LEVEL"); level != "" {
-		if parsedLevel, err := log.ParseLevel(level); err == nil {
-			log.SetLevel(parsedLevel)
+		if parsedLevel, err := logrus.ParseLevel(level); err == nil {
+			logrus.SetLevel(parsedLevel)
 		}
 	}
 
@@ -83,7 +82,7 @@ func main() {
 	defer cancel()
 
 	if err := rootCmd.Run(ctx, os.Args); err != nil && !errors.Is(err, context.Canceled) {
-		log.Error(err)
+		logrus.Error(err)
 		os.Exit(1)
 	}
 	os.Exit(0)
@@ -105,7 +104,7 @@ func rootBefore(c context.Context, cmd *cli.Command) (context.Context, error) {
 		return c, err
 	}
 
-	log.WithFields(log.Fields{
+	logrus.WithFields(logrus.Fields{
 		"log-level":    rootConfig.LogLevel,
 		"log-format":   rootConfig.LogFormat,
 		"metrics-host": rootConfig.MetricsHost,
@@ -115,37 +114,37 @@ func rootBefore(c context.Context, cmd *cli.Command) (context.Context, error) {
 }
 
 func rootAfter(c context.Context, cmd *cli.Command) error {
-	log.Info("successfully shutted down")
+	logrus.Info("successfully shutted down")
 	return nil
 }
 
 func configureLogger(_ context.Context, cmd *cli.Command, logger *logrus.Logger) error {
 	// log level
-	logLevel := log.InfoLevel
+	logLevel := logrus.InfoLevel
 	if cmd.IsSet("log-level") {
 		switch strings.ToLower(rootConfig.LogLevel) {
 		case "debug":
-			logLevel = log.DebugLevel
+			logLevel = logrus.DebugLevel
 		case "info":
-			logLevel = log.InfoLevel
+			logLevel = logrus.InfoLevel
 		case "warn":
-			logLevel = log.WarnLevel
+			logLevel = logrus.WarnLevel
 		case "error":
-			logLevel = log.ErrorLevel
+			logLevel = logrus.ErrorLevel
 		default:
 			return fmt.Errorf("unknown log level: %s", rootConfig.LogLevel)
 		}
 	}
-	logger.SetLevel(log.Level(logLevel))
+	logger.SetLevel(logrus.Level(logLevel))
 
 	// log format
 	switch strings.ToLower(rootConfig.LogFormat) {
 	case "text":
-		logger.SetFormatter(&log.TextFormatter{
+		logger.SetFormatter(&logrus.TextFormatter{
 			DisableColors: false,
 		})
 	case "json":
-		logger.SetFormatter(&log.JSONFormatter{})
+		logger.SetFormatter(&logrus.JSONFormatter{})
 	default:
 		return fmt.Errorf("unknown log format: %q", rootConfig.LogFormat)
 	}
