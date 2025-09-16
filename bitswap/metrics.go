@@ -35,7 +35,7 @@ func PromMeterProvider(ctx context.Context) (metric.MeterProvider, error) {
 
 	opts := []promexp.Option{
 		promexp.WithRegisterer(registry), // actually unnecessary, as we overwrite the default values above
-		promexp.WithNamespace("akai"),
+		promexp.WithNamespace("bitswap-sniffer"),
 	}
 
 	exporter, err := promexp.New(opts...)
@@ -44,7 +44,7 @@ func PromMeterProvider(ctx context.Context) (metric.MeterProvider, error) {
 	}
 
 	res, err := resource.New(ctx, resource.WithAttributes(
-		semconv.ServiceName("akai"),
+		semconv.ServiceName("bitswap-sniffer"),
 	))
 	if err != nil {
 		return nil, fmt.Errorf("new metrics resource: %w", err)

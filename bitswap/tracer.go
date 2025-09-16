@@ -20,17 +20,6 @@ func NewTracer(log *logrus.Logger) (*LogTracer, error) {
 }
 
 func (t *LogTracer) MessageReceived(pid peer.ID, bmsg bsmsg.BitSwapMessage) {
-	wantList := bmsg.Wantlist()
-	haveList := bmsg.Haves()
-	dontHaveList := bmsg.DontHaves()
-
-	t.log.WithFields(logrus.Fields{
-		"peer-id":    pid.String(),
-		"wants":      len(wantList),
-		"haves":      len(haveList),
-		"dont-haves": len(dontHaveList),
-	}).Info("new received message")
-
 	logBitswap(t.log, "new received message", pid, bmsg)
 }
 
@@ -48,7 +37,7 @@ func logBitswap(logger *logrus.Logger, lmsg string, pid peer.ID, bmsg bsmsg.BitS
 		"wants":      len(wantList),
 		"haves":      len(haveList),
 		"dont-haves": len(dontHaveList),
-	}).Info("sent message")
+	}).Info(lmsg)
 
 	wantCids := make([]string, len(wantList))
 	for i, wMsg := range wantList {

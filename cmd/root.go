@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/pkg/errors"
 	"github.com/probe-lab/bitswap-sniffer/bitswap"
@@ -21,17 +20,14 @@ var rootConfig = struct {
 	LogFormat           string
 	MetricsHost         string
 	MetricsPort         int
-	ConnectionRetries   int
-	ConnectionTimeout   time.Duration
 	Logger              *logrus.Logger
-	MetricsProvider     *metric.MeterProvider
+	MetricsProvider     metric.MeterProvider
 	MetricsShutdownFunc func(context.Context) error
 }{
 	LogLevel:            "info",
+	LogFormat:           "text",
 	MetricsHost:         "127.0.0.1",
 	MetricsPort:         9080,
-	ConnectionRetries:   3,
-	ConnectionTimeout:   30 * time.Second,
 	Logger:              nil,
 	MetricsShutdownFunc: nil,
 }
@@ -73,18 +69,6 @@ var rootFlags = []cli.Flag{
 		Value:       rootConfig.MetricsPort,
 		Destination: &rootConfig.MetricsPort,
 	},
-	&cli.IntFlag{
-		Name:        "connection.retries",
-		Usage:       "Number of retries when connecting the node",
-		Value:       rootConfig.ConnectionRetries,
-		Destination: &rootConfig.ConnectionRetries,
-	},
-	&cli.DurationFlag{
-		Name:        "connection.timeout",
-		Usage:       "Timeout for the connection attempt to the node",
-		Value:       rootConfig.ConnectionTimeout,
-		Destination: &rootConfig.ConnectionTimeout,
-	},
 }
 
 func main() {
@@ -106,7 +90,6 @@ func main() {
 }
 
 func rootBefore(c context.Context, cmd *cli.Command) (context.Context, error) {
-	// don't set up anything if akai is run without arguments
 	if cmd.NArg() == 0 {
 		return c, nil
 	}
@@ -132,7 +115,7 @@ func rootBefore(c context.Context, cmd *cli.Command) (context.Context, error) {
 }
 
 func rootAfter(c context.Context, cmd *cli.Command) error {
-	log.Info("Akai successfully shutted down")
+	log.Info("successfully shutted down")
 	return nil
 }
 
@@ -185,7 +168,7 @@ func configureMetrics(ctx context.Context, _ *cli.Command) error {
 	shutdownFunc := bitswap.ServeMetrics(ctx, rootConfig.MetricsHost, rootConfig.MetricsPort)
 
 	rootConfig.MetricsShutdownFunc = shutdownFunc
-	rootConfig.MetricProvider = provider
+	rootConfig.MetricsProvider = provider
 
 	return nil
 }

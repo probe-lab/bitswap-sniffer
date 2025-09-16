@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"time"
 
 	"github.com/probe-lab/bitswap-sniffer/bitswap"
 	"github.com/sirupsen/logrus"
@@ -9,11 +10,13 @@ import (
 )
 
 var runConfig = struct {
-	Libp2pHost string
-	Libp2pPort int
+	Libp2pHost        string
+	Libp2pPort        int
+	ConnectionTimeout time.Duration
 }{
-	Libp2pHost: "127.0.0.1",
-	Libp2pPort: 9020,
+	Libp2pHost:        "127.0.0.1",
+	Libp2pPort:        9020,
+	ConnectionTimeout: 10 * time.Second,
 }
 
 var cmdRun = &cli.Command{
@@ -21,10 +24,10 @@ var cmdRun = &cli.Command{
 	Usage:                 "Connects and scans a given node for its custody and network status",
 	EnableShellCompletion: true,
 	Action:                scanAction,
-	Flags:                 scanFlags,
+	Flags:                 runFlags,
 }
 
-var scanFlags = []cli.Flag{
+var runFlags = []cli.Flag{
 	&cli.StringFlag{
 		Name:        "libp2p.host",
 		Usage:       "IP for the Libp2p host",
@@ -37,22 +40,28 @@ var scanFlags = []cli.Flag{
 		Value:       runConfig.Libp2pPort,
 		Destination: &runConfig.Libp2pPort,
 	},
+	&cli.DurationFlag{
+		Name:        "connection.timeout",
+		Usage:       "Timeout for the connection attempt to the node",
+		Value:       runConfig.ConnectionTimeout,
+		Destination: &runConfig.ConnectionTimeout,
+	},
 }
 
 func scanAction(ctx context.Context, cmd *cli.Command) error {
 	log := rootConfig.Logger
 	rootConfig.Logger.WithFields(logrus.Fields{
-		"libp2p-host":  runConfig.Libp2pHost,
-		"libp2p-port":  runConfig.Libp2pPort,
-		"metrics-host": rootConfig.MetricsHost,
-		"metrics-port": rootConfig.MetricsPort,
+		"libp2p-host":        runConfig.Libp2pHost,
+		"libp2p-port":        runConfig.Libp2pPort,
+		"connection-timeout": runConfig.ConnectionTimeout,
 	}).Info("running bitswap-sniffer")
 
 	snifferConfig := &bitswap.SnifferConfig{
-		Logger:     log,
-		Meter:      rootConfig.MetricsProvider,
-		Libp2pHost: runConfig.Libp2pHost,
-		Libp2pPort: runConfig.Libp2pPort,
+		Libp2pHost:  runConfig.Libp2pHost,
+		Libp2pPort:  runConfig.Libp2pPort,
+		DialTimeout: runConfig.ConnectionTimeout,
+		Logger:      log,
+		Meter:       rootConfig.MetricsProvider,
 	}
 	err := snifferConfig.Validate()
 	if err != nil {
@@ -62,12 +71,12 @@ func scanAction(ctx context.Context, cmd *cli.Command) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	dhtCli, err := snifferConfig.DHTClient(ctx)
+	dhtCli, err := snifferConfig.CreateDHTClient(ctx)
 	if err != nil {
 		return err
 	}
 
-	sniffer, err := bitswap.NewSniffer(ctx, log, dhtCli)
+	sniffer, err := bitswap.NewSniffer(ctx, dhtCli, snifferConfig)
 	if err != nil {
 		return err
 	}

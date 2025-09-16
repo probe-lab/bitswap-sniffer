@@ -10,7 +10,7 @@ run:
     {{GOCC}} run {{BIN}}/root.go
 
 build:
-	{{GOCC}} build -o {{BIN}} {{TARGET_PATH}}
+	{{GOCC}} build -o {{TARGET_PATH}} {{BIN}}
 
 clean:
 	@rm -r $(BIN_PATH)

@@ -26,7 +26,7 @@ type SnifferConfig struct {
 	DialTimeout time.Duration
 
 	Logger *logrus.Logger
-	Meter  *metric.MeterProvider
+	Meter  metric.MeterProvider
 }
 
 func (c *SnifferConfig) Validate() error {
@@ -95,7 +95,7 @@ func (c *SnifferConfig) DHTClientOptions() ([]kaddht.Option, error) {
 	}, nil
 }
 
-func (c *SnifferConfig) DHTClient(ctx context.Context) (*kaddht.IpfsDHT, error) {
+func (c *SnifferConfig) CreateDHTClient(ctx context.Context) (*kaddht.IpfsDHT, error) {
 	// generate the libp2p host
 	hostOptions, err := c.Libp2pOptions()
 	h, err := libp2p.New(hostOptions...)

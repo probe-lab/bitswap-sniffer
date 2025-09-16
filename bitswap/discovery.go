@@ -47,7 +47,7 @@ func NewDiscovery(dhtCli *kaddht.IpfsDHT, log *logrus.Logger, cfg *DiscoveryConf
 }
 
 func (d *Discovery) Serve(ctx context.Context) (err error) {
-	d.log.Info("Starting discv5 Discovery Service", "interval", d.cfg.Interval)
+	d.log.WithField("interval", d.cfg.Interval).Info("Starting discv5 Discovery Service")
 	defer d.log.Info("Stopped discv5 Discovery Service")
 
 	for {
@@ -59,9 +59,13 @@ func (d *Discovery) Serve(ctx context.Context) (err error) {
 
 		start := time.Now()
 		timeoutCtx, timeoutCancel := context.WithTimeout(ctx, time.Minute)
-		d.log.Info("Looking up random key", "key", hex.EncodeToString(k))
+		d.log.WithField("key", hex.EncodeToString(k)).Info("Looking up random key")
 		peers, err := d.dhtCli.GetClosestPeers(timeoutCtx, string(k))
-		d.log.Info("Finished lookup", "count", len(peers), "err", err, "took", time.Since(start).String())
+		d.log.WithFields(logrus.Fields{
+			"count": len(peers),
+			"err":   err,
+			"took":  time.Since(start).String(),
+		}).Info("Finished lookup")
 		timeoutCancel()
 
 		// d.MeterLookups.Add(ctx, 1, metric.WithAttributes(attribute.Bool("success", err == nil)))

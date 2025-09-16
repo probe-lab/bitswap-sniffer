@@ -24,7 +24,7 @@ import (
 )
 
 type Sniffer struct {
-	config SnifferConfig
+	config *SnifferConfig
 	log    *logrus.Logger
 
 	// services
@@ -33,7 +33,8 @@ type Sniffer struct {
 	discovery *Discovery
 }
 
-func NewSniffer(ctx context.Context, logger *logrus.Logger, dhtCli *kaddht.IpfsDHT) (*Sniffer, error) {
+func NewSniffer(ctx context.Context, dhtCli *kaddht.IpfsDHT, config *SnifferConfig) (*Sniffer, error) {
+	log := config.Logger
 	ds := dsync.MutexWrap(datastore.NewMapDatastore())
 	bs := blockstore.NewBlockstore(ds)
 	bs = blockstore.NewIdStore(bs)
@@ -57,7 +58,7 @@ func NewSniffer(ctx context.Context, logger *logrus.Logger, dhtCli *kaddht.IpfsD
 		return nil, err
 	}
 
-	localTracer, err := NewTracer(logger)
+	localTracer, err := NewTracer(log)
 	if err != nil {
 		return nil, err
 	}
@@ -72,15 +73,17 @@ func NewSniffer(ctx context.Context, logger *logrus.Logger, dhtCli *kaddht.IpfsD
 
 	discv, err := NewDiscovery(
 		dhtCli,
-		logger,
+		log,
 		&DiscoveryConfig{
 			Interval: 15 * time.Second,
 		},
 	)
 
 	return &Sniffer{
-		log:       logger,
+		log:       log,
+		config:    config,
 		bitswap:   bsServic,
+		dhtCli:    dhtCli,
 		discovery: discv,
 	}, nil
 }
@@ -128,6 +131,7 @@ func (s *Sniffer) Init(ctx context.Context) error {
 			"protocol_versions": attrs["protocol_versions"],
 		}).Debug("bootnode info")
 	}
+	return nil
 }
 
 func (s *Sniffer) bootstrapDHT(ctx context.Context, bootstrappers []peer.AddrInfo) ([]peer.ID, error) {
