@@ -22,7 +22,7 @@ type SharedCid struct {
 	// PeerID of the remote node
 	By string `ch:"peer_id" json:"peer_id"`
 	// Want/Have/DontHave
-	Type string `ch:"type" json:"type"`
+	Type string `ch:"msg_type" json:"msg_type"`
 }
 
 func PrepareSharedCidsBatch(ctx context.Context, db driver.Conn, cids []SharedCid) (driver.Batch, error) {
