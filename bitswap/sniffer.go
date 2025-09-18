@@ -2,15 +2,18 @@ package bitswap
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"sync"
 	"time"
 
+	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/ipfs/boxo/bitswap"
 	"github.com/ipfs/boxo/bitswap/network"
 	"github.com/ipfs/boxo/bitswap/network/bsnet"
 	"github.com/ipfs/boxo/bitswap/network/httpnet"
 	"github.com/ipfs/boxo/blockstore"
+	"github.com/ipfs/go-cid"
 	kaddht "github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -21,11 +24,17 @@ import (
 
 	"github.com/ipfs/go-datastore"
 	dsync "github.com/ipfs/go-datastore/sync"
+	mh "github.com/multiformats/go-multihash"
 )
 
 type Sniffer struct {
 	config *SnifferConfig
 	log    *logrus.Logger
+
+	// cid comsumer-related
+	cidCache *lru.Cache[string, struct{}]
+	cidC     chan []SharedCid
+	db       *ClickhouseDB
 
 	// services
 	bitswap   *bitswap.Bitswap
@@ -33,12 +42,14 @@ type Sniffer struct {
 	discovery *Discovery
 }
 
-func NewSniffer(ctx context.Context, dhtCli *kaddht.IpfsDHT, config *SnifferConfig) (*Sniffer, error) {
+func NewSniffer(ctx context.Context, config *SnifferConfig, dhtCli *kaddht.IpfsDHT, db *ClickhouseDB) (*Sniffer, error) {
 	log := config.Logger
+	cidC := make(chan []SharedCid)
 	ds := dsync.MutexWrap(datastore.NewMapDatastore())
 	bs := blockstore.NewBlockstore(ds)
 	bs = blockstore.NewIdStore(bs)
 
+	// configure reqs for bitswap client
 	bitswapLibp2p := bsnet.NewFromIpfsHost(dhtCli.Host())
 	bitswapHTTP := httpnet.New(
 		dhtCli.Host(),
@@ -58,17 +69,20 @@ func NewSniffer(ctx context.Context, dhtCli *kaddht.IpfsDHT, config *SnifferConf
 		return nil, err
 	}
 
-	localTracer, err := NewTracer(log)
+	// custom tracer to stream all cids
+	tracer, err := NewStreamTracer(log, cidC)
 	if err != nil {
 		return nil, err
 	}
 
+	// create the bitswap server
 	bsServic := bitswap.New(
 		ctx,
 		bitswapNetworks,
 		providerQueryMgr,
 		bs,
-		bitswap.WithTracer(localTracer),
+		bitswap.WithTracer(tracer),
+		bitswap.WithServerEnabled(true),
 	)
 
 	discv, err := NewDiscovery(
@@ -82,19 +96,36 @@ func NewSniffer(ctx context.Context, dhtCli *kaddht.IpfsDHT, config *SnifferConf
 		return nil, err
 	}
 
+	cidCache, err := lru.New[string, struct{}](config.CacheSize)
+	if err != nil {
+		return nil, err
+	}
 	return &Sniffer{
 		log:       log,
 		config:    config,
+		cidCache:  cidCache,
+		cidC:      cidC,
 		bitswap:   bsServic,
 		dhtCli:    dhtCli,
+		db:        db,
 		discovery: discv,
 	}, nil
 }
 
 func (s *Sniffer) Serve(ctx context.Context) error {
-	go func() {
-		s.discovery.Serve(ctx)
+	// ensure that we close everything before leaving
+	defer func() {
+		// close db connections
+		s.db.Close()
 	}()
+
+	go s.discovery.Serve(ctx)
+	go s.cidConsumer(ctx)
+
+	err := s.makeSnifferAppealing(ctx)
+	if err != nil {
+		return err
+	}
 
 	for {
 		select {
@@ -111,6 +142,7 @@ func (s *Sniffer) Serve(ctx context.Context) error {
 				"msg-received": stats.MessagesReceived,
 				"msg-sent":     stats.DataSent,
 			}).Info("bitswap stats...")
+
 		case <-ctx.Done():
 			return nil
 		}
@@ -134,7 +166,73 @@ func (s *Sniffer) Init(ctx context.Context) error {
 			"protocol_versions": attrs["protocol_versions"],
 		}).Debug("bootnode info")
 	}
+
+	// init the db
+	return s.db.Init(ctx)
+}
+
+func (s *Sniffer) makeSnifferAppealing(ctx context.Context) error {
+	// create and add as an IWANT a random Cid
+	// this ensures that remote peers still try to fetch stuff from us
+
+	content := make([]byte, 1_024)
+	rand.Read(content)
+
+	// configure the type of CID that we want
+	pref := cid.Prefix{
+		Version:  1,
+		Codec:    cid.Raw,
+		MhType:   mh.SHA2_256,
+		MhLength: -1,
+	}
+
+	// get the CID of the content we just generated
+	randCid, err := pref.Sum(content)
+	if err != nil {
+		return err
+	}
+	s.log.WithField("cid", randCid.String()).Info("Bitswap appealer: pretending to fetch cid from bitswap...")
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(15 * time.Second):
+				s.log.WithField("cid", randCid.String()).Info("Bitswap appealer: pretending to fetch cid from bitswap...")
+				getBlockCtx, cancel := context.WithTimeout(ctx, 1*time.Minute)
+				_, err := s.bitswap.GetBlock(getBlockCtx, randCid)
+				if err != nil {
+					s.log.Warnf("Bitswap appealer: Opps! (as expected) we couldn't find this random CID: %s - %v", randCid.String(), err)
+				}
+				cancel()
+			}
+		}
+	}()
 	return nil
+}
+
+func (s *Sniffer) cidConsumer(ctx context.Context) {
+	for {
+		select {
+		case cidList := <-s.cidC:
+			cids := make([]SharedCid, 0)
+			for _, sCid := range cidList {
+				present := s.cidCache.Contains(sCid.Cid)
+				if present {
+					continue
+				}
+				s.cidCache.Add(sCid.Cid, struct{}{})
+				cids = append(cids, sCid)
+			}
+			if len(cids) > 0 {
+				s.db.PersistCidBatch(ctx, cids)
+			}
+
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 func (s *Sniffer) bootstrapDHT(ctx context.Context, bootstrappers []peer.AddrInfo) ([]peer.ID, error) {

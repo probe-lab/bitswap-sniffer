@@ -109,7 +109,7 @@ func rootBefore(c context.Context, cmd *cli.Command) (context.Context, error) {
 		"log-format":   rootConfig.LogFormat,
 		"metrics-host": rootConfig.MetricsHost,
 		"metrics-port": rootConfig.MetricsPort,
-	}).Info("running bitswap-sniffer command...")
+	}).Info("running bitswap-sniffer with ...")
 	return c, nil
 }
 
@@ -121,7 +121,7 @@ func rootAfter(c context.Context, cmd *cli.Command) error {
 func configureLogger(_ context.Context, cmd *cli.Command, logger *logrus.Logger) error {
 	// log level
 	logLevel := logrus.InfoLevel
-	if cmd.IsSet("log-level") {
+	if cmd.IsSet("log.level") {
 		switch strings.ToLower(rootConfig.LogLevel) {
 		case "debug":
 			logLevel = logrus.DebugLevel

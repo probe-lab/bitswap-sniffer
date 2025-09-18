@@ -24,6 +24,7 @@ type SnifferConfig struct {
 	Libp2pHost  string
 	Libp2pPort  int
 	DialTimeout time.Duration
+	CacheSize   int
 
 	Logger *logrus.Logger
 	Meter  metric.MeterProvider
@@ -40,6 +41,9 @@ func (c *SnifferConfig) Validate() error {
 	}
 	if c.DialTimeout == time.Duration(0) {
 		return fmt.Errorf("invlaid dial timeout: %s", c.DialTimeout)
+	}
+	if c.CacheSize <= 0 {
+		return fmt.Errorf("invalid cache size: %d", c.CacheSize)
 	}
 
 	// extra services related stuff
