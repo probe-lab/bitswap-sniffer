@@ -4,7 +4,6 @@ go 1.24.6
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.40.3
-	github.com/golang-migrate/migrate v3.5.4+incompatible
 	github.com/golang-migrate/migrate/v4 v4.19.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/ipfs/boxo v0.34.0
