@@ -18,6 +18,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 
 	rpqm "github.com/ipfs/boxo/routing/providerquerymanager"
 	routingdisc "github.com/libp2p/go-libp2p/p2p/discovery/routing"
@@ -40,6 +42,12 @@ type Sniffer struct {
 	bitswap   *bitswap.Bitswap
 	dhtCli    *kaddht.IpfsDHT
 	discovery *Discovery
+
+	// metrics
+	cidHist          metric.Int64Gauge
+	uniqueCidCount   metric.Int64Counter
+	bitswapStatsHist metric.Int64Gauge
+	bitswapPeerCount metric.Int64Gauge
 }
 
 func NewSniffer(ctx context.Context, config *SnifferConfig, dhtCli *kaddht.IpfsDHT, db *ClickhouseDB) (*Sniffer, error) {
@@ -143,6 +151,29 @@ func (s *Sniffer) Serve(ctx context.Context) error {
 				"msg-sent":     stats.DataSent,
 			}).Info("bitswap stats...")
 
+			s.bitswapPeerCount.Record(ctx, int64(len(stats.Peers)))
+			s.bitswapStatsHist.Record(
+				ctx,
+				int64(stats.MessagesReceived),
+				metric.WithAttributes(
+					attribute.String("type", "sent"),
+				),
+			)
+			s.bitswapStatsHist.Record(
+				ctx,
+				int64(stats.DataSent),
+				metric.WithAttributes(
+					attribute.String("type", "received"),
+				),
+			)
+			s.bitswapStatsHist.Record(
+				ctx,
+				int64(len(stats.Wantlist)),
+				metric.WithAttributes(
+					attribute.String("type", "cid-want-list"),
+				),
+			)
+
 		case <-ctx.Done():
 			return nil
 		}
@@ -168,7 +199,12 @@ func (s *Sniffer) Init(ctx context.Context) error {
 	}
 
 	// init the db
-	return s.db.Init(ctx)
+	err = s.db.Init(ctx)
+	if err != nil {
+		return err
+	}
+
+	return s.initMetrics(ctx)
 }
 
 func (s *Sniffer) makeSnifferAppealing(ctx context.Context) error {
@@ -218,12 +254,22 @@ func (s *Sniffer) cidConsumer(ctx context.Context) {
 		case cidList := <-s.cidC:
 			cids := make([]SharedCid, 0)
 			for _, sCid := range cidList {
+				s.cidHist.Record(
+					ctx,
+					1,
+					metric.WithAttributes(
+						attribute.String("direction", sCid.Direction),
+						attribute.String("msg_type", sCid.Type),
+					),
+				)
 				present := s.cidCache.Contains(sCid.Cid)
 				if present {
 					continue
 				}
 				s.cidCache.Add(sCid.Cid, struct{}{})
 				cids = append(cids, sCid)
+				s.uniqueCidCount.Add(ctx, int64(1))
+
 			}
 			if len(cids) > 0 {
 				s.db.PersistCidBatch(ctx, cids)
@@ -302,4 +348,28 @@ func getLibp2pHostInfo(h host.Host, pID peer.ID) map[string]any {
 	attrs["protocol_version"] = pv
 
 	return attrs
+}
+
+func (s *Sniffer) initMetrics(ctx context.Context) error {
+	var err error
+	meter := s.config.Telemetry.Meter("sniffer")
+
+	s.cidHist, err = meter.Int64Gauge("total_seen_cids", metric.WithDescription("Number of cids seen during runtime"))
+	if err != nil {
+		return fmt.Errorf("total seen cids histogram: %w", err)
+	}
+	s.uniqueCidCount, err = meter.Int64Counter("unique_cids_by_msg_type", metric.WithDescription("Total number of unique CIDs"))
+	if err != nil {
+		return fmt.Errorf("unique seen cids counter: %w", err)
+	}
+	s.bitswapStatsHist, err = meter.Int64Gauge("bitswap_stats", metric.WithDescription("Bitswap stats for sent and received msgs"))
+	if err != nil {
+		return fmt.Errorf("bitswap stats histogram: %w", err)
+	}
+	s.bitswapPeerCount, err = meter.Int64Gauge("bitswap_peer_count", metric.WithDescription("Number of peers connected at the Bitswap level"))
+	if err != nil {
+		return fmt.Errorf("bitswap peer count gauge: %w", err)
+	}
+
+	return nil
 }

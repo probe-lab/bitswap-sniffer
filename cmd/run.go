@@ -147,7 +147,7 @@ func scanAction(ctx context.Context, cmd *cli.Command) error {
 		DialTimeout: runConfig.ConnectionTimeout,
 		CacheSize:   runConfig.CacheSize,
 		Logger:      log,
-		Meter:       rootConfig.MetricsProvider,
+		Telemetry:   rootConfig.MetricsProvider,
 	}
 	err := snifferConfig.Validate()
 	if err != nil {
@@ -170,7 +170,7 @@ func scanAction(ctx context.Context, cmd *cli.Command) error {
 		Secure:          runConfig.ChSecure,
 		BatchSize:       runConfig.BatcherSize,
 		Flushers:        runConfig.Flushers,
-		Meter:           rootConfig.MetricsProvider,
+		Telemetry:       rootConfig.MetricsProvider,
 	}
 	chCli, err := bitswap.NewClickhouseDB(conDetails, log)
 	if err != nil {
