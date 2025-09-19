@@ -14,8 +14,8 @@ import (
 )
 
 type DiscoveryConfig struct {
-	Interval time.Duration
-	Meter    metric.Meter
+	Interval  time.Duration
+	Telemetry metric.Meter
 }
 
 type Discovery struct {
