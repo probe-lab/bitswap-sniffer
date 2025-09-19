@@ -19,6 +19,8 @@ type SharedCid struct {
 	Direction string `ch:"direction" json:"direction"`
 	// string representation of the CID
 	Cid string `ch:"cid" json:"cid"`
+	// PeerID of the producer client
+	Producer string `ch:"producer_id" json:"producer_id"`
 	// PeerID of the remote node
 	By string `ch:"peer_id" json:"peer_id"`
 	// Want/Have/DontHave

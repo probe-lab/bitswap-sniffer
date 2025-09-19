@@ -10,16 +10,18 @@ import (
 )
 
 type CidStreamTracer struct {
-	log  *logrus.Logger
-	cidC chan []SharedCid
+	log      *logrus.Logger
+	producer peer.ID
+	cidC     chan []SharedCid
 }
 
 var _ tracer.Tracer = &CidStreamTracer{}
 
-func NewStreamTracer(log *logrus.Logger, cidC chan []SharedCid) (*CidStreamTracer, error) {
+func NewStreamTracer(log *logrus.Logger, producerID peer.ID, cidC chan []SharedCid) (*CidStreamTracer, error) {
 	return &CidStreamTracer{
-		log:  log,
-		cidC: cidC,
+		log:      log,
+		producer: producerID,
+		cidC:     cidC,
 	}, nil
 }
 
@@ -43,25 +45,25 @@ func (t *CidStreamTracer) streamCid(direction string, pid peer.ID, bmsg bsmsg.Bi
 	wantCids := make([]string, len(wantList))
 	for i, wMsg := range wantList {
 		wantCids[i] = wMsg.Cid.String()
-		sharedCids = append(sharedCids, SharedCid{timestamp, direction, wMsg.Cid.String(), pid.String(), "want"})
+		sharedCids = append(sharedCids, SharedCid{timestamp, direction, wMsg.Cid.String(), t.producer.String(), pid.String(), "want"})
 	}
 
 	haveCids := make([]string, len(haveList))
 	for i, hMsg := range haveCids {
 		haveCids[i] = string(hMsg)
-		sharedCids = append(sharedCids, SharedCid{timestamp, direction, string(hMsg), pid.String(), "have"})
+		sharedCids = append(sharedCids, SharedCid{timestamp, direction, string(hMsg), t.producer.String(), pid.String(), "have"})
 	}
 
 	dontHaveCids := make([]string, len(dontHaveList))
 	for i, dhMsg := range dontHaveCids {
 		dontHaveCids[i] = string(dhMsg)
-		sharedCids = append(sharedCids, SharedCid{timestamp, direction, string(dhMsg), pid.String(), "dont-have"})
+		sharedCids = append(sharedCids, SharedCid{timestamp, direction, string(dhMsg), t.producer.String(), pid.String(), "dont-have"})
 	}
 
 	blockCids := make([]string, len(blockList))
 	for i, bMsg := range blockList {
 		blockCids[i] = bMsg.Cid().String()
-		sharedCids = append(sharedCids, SharedCid{timestamp, direction, bMsg.Cid().String(), pid.String(), "block"})
+		sharedCids = append(sharedCids, SharedCid{timestamp, direction, bMsg.Cid().String(), t.producer.String(), pid.String(), "block"})
 	}
 
 	t.log.WithFields(logrus.Fields{

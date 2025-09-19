@@ -29,3 +29,5 @@ services:
       - "--web.enable-remote-write-receiver"
     ports:
       - "9090:9090"
+    volumes:
+      - ./prometheus/:/etc/prometheus/

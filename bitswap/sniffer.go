@@ -70,7 +70,7 @@ func NewSniffer(ctx context.Context, config *SnifferConfig, dhtCli *kaddht.IpfsD
 	}
 
 	// custom tracer to stream all cids
-	tracer, err := NewStreamTracer(log, cidC)
+	tracer, err := NewStreamTracer(log, dhtCli.Host().ID(), cidC)
 	if err != nil {
 		return nil, err
 	}
