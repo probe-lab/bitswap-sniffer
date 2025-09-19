@@ -15,6 +15,7 @@ import (
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
 
@@ -34,7 +35,7 @@ type ChConfig struct {
 	Flushers        int
 	Cluster         string
 	MigrationEngine string
-	Meter           metric.MeterProvider
+	Telemetry       metric.MeterProvider
 }
 
 func (c *ChConfig) Options() *clickhouse.Options {
@@ -64,14 +65,15 @@ type ClickhouseDB struct {
 	cidBatcher   *cidBatcher
 	closeFlusher chan struct{}
 
-	meter metric.MeterProvider
+	// metrics
+	insertRowCount         metric.Int64Counter
+	insertLatencyHistogram metric.Int64Histogram
 }
 
 func NewClickhouseDB(config *ChConfig, log *logrus.Logger) (*ClickhouseDB, error) {
 	db := &ClickhouseDB{
 		config:       config,
 		log:          log,
-		meter:        config.Meter,
 		cidBatcher:   newCidBatcher(config.BatchSize),
 		cidC:         make(chan []SharedCid, config.Flushers),
 		closeFlusher: make(chan struct{}),
@@ -93,7 +95,8 @@ func (db *ClickhouseDB) Init(ctx context.Context) error {
 	}
 
 	go db.internalFlushingLoop(ctx, db.config.Flushers)
-	return nil
+
+	return db.initMetrics(ctx)
 }
 
 func (db *ClickhouseDB) openConnection(ctx context.Context) (err error) {
@@ -182,11 +185,22 @@ func (db *ClickhouseDB) send(ctx context.Context, batch driver.Batch, table stri
 			"error": err.Error(),
 		}).Error("Failed to send ch batch")
 	}
+	duration := time.Since(start)
 	db.log.WithFields(logrus.Fields{
 		"rows":     batch.Rows(),
 		"table":    table,
-		"duration": time.Since(start),
+		"duration": duration,
 	}).Info("Ch batch sent")
+	db.insertRowCount.Add(ctx, int64(batch.Rows()))
+	db.insertLatencyHistogram.Record(
+		ctx,
+		duration.Milliseconds(),
+		metric.WithAttributes(
+			attribute.String("type", table),
+			attribute.Bool("success", err == nil),
+		),
+	)
+
 }
 
 func (db *ClickhouseDB) PersistCidBatch(ctx context.Context, cids []SharedCid) {
@@ -266,5 +280,20 @@ func (db *ClickhouseDB) ensureMigrations() error {
 		return fmt.Errorf("migrate database: %w", err)
 	}
 
+	return nil
+}
+
+func (db *ClickhouseDB) initMetrics(ctx context.Context) error {
+	var err error
+	meter := db.config.Telemetry.Meter("clickhouse")
+	db.insertRowCount, err = meter.Int64Counter("inserts", metric.WithDescription("Number of written rows"))
+	if err != nil {
+		return fmt.Errorf("inserts counter: %w", err)
+	}
+
+	db.insertLatencyHistogram, err = meter.Int64Histogram("insert_latency", metric.WithDescription("Histogram of database query times for insertions"), metric.WithUnit("milliseconds"))
+	if err != nil {
+		return fmt.Errorf("insert_latency histogram: %w", err)
+	}
 	return nil
 }

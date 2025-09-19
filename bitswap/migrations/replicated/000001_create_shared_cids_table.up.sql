@@ -1,9 +1,12 @@
--- Captures the information about the cids shared or requested over bitswap.
+-- Captures the information about the CIDs shared or requested over Bitswap.
 CREATE TABLE shared_cids (
-    timestamp  DateTime64(3), -- Timestamp of the event, with millisecond precision.
-    direction  String,        -- Direction of the event: "sent" or "received".
-    cid        String,        -- Content Identifier (CID) involved in the event.
-    peer_id    String,        -- Peer ID of the remote node in the event.
-    type       String         -- Type of Bitswap message: "want", "have", "dont-have", or "block".
-) ENGINE ReplicatedReplacingMergeTree(timestamp)
-    PRIMARY KEY (timestamp, cid)
+    timestamp   DateTime,                 -- Timestamp of the event, with millisecond precision.
+    direction   LowCardinality(String),       -- Direction of the event: "sent" or "received". Using LowCardinality for efficient storage & lookup.
+    cid         String,                        -- Content Identifier (CID) involved in the event.
+    peer_id     String,                        -- Peer ID of the remote node in the event.
+    msg_type    LowCardinality(String)        -- Message type: "want", "have", "dont-have", or "block". Renamed from 'type' for clarity.
+)
+ENGINE = ReplicatedMergeTree()
+PARTITION BY toMonth(timestamp)               -- Partition data by month, based on the event timestamp.
+PRIMARY KEY (timestamp)                        -- Use timestamp as primary key for sorting and efficient range queries.
+TTL timestamp + INTERVAL 180 DAY              -- TTL to expire data older than 180 days.

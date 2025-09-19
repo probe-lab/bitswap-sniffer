@@ -26,8 +26,8 @@ type SnifferConfig struct {
 	DialTimeout time.Duration
 	CacheSize   int
 
-	Logger *logrus.Logger
-	Meter  metric.MeterProvider
+	Logger    *logrus.Logger
+	Telemetry metric.MeterProvider
 }
 
 func (c *SnifferConfig) Validate() error {
@@ -50,7 +50,7 @@ func (c *SnifferConfig) Validate() error {
 	if c.Logger == nil {
 		return fmt.Errorf("no logger on sniffer config")
 	}
-	if c.Meter == nil {
+	if c.Telemetry == nil {
 		return fmt.Errorf("no metrics-service on sniffer config")
 	}
 	return nil
