@@ -44,10 +44,10 @@ type Sniffer struct {
 	discovery *Discovery
 
 	// metrics
-	cidHist          metric.Int64Gauge
-	uniqueCidCount   metric.Int64Counter
-	bitswapStatsHist metric.Int64Gauge
-	bitswapPeerCount metric.Int64Gauge
+	cidCount          metric.Int64Counter
+	uniqueCidCount    metric.Int64Counter
+	bitswapStatsCount metric.Int64Counter
+	bitswapPeerCount  metric.Int64Gauge
 }
 
 func NewSniffer(ctx context.Context, config *SnifferConfig, dhtCli *kaddht.IpfsDHT, db *ClickhouseDB) (*Sniffer, error) {
@@ -152,21 +152,21 @@ func (s *Sniffer) Serve(ctx context.Context) error {
 			}).Info("bitswap stats...")
 
 			s.bitswapPeerCount.Record(ctx, int64(len(stats.Peers)))
-			s.bitswapStatsHist.Record(
+			s.bitswapStatsCount.Add(
 				ctx,
 				int64(stats.MessagesReceived),
 				metric.WithAttributes(
 					attribute.String("type", "sent"),
 				),
 			)
-			s.bitswapStatsHist.Record(
+			s.bitswapStatsCount.Add(
 				ctx,
 				int64(stats.DataSent),
 				metric.WithAttributes(
 					attribute.String("type", "received"),
 				),
 			)
-			s.bitswapStatsHist.Record(
+			s.bitswapStatsCount.Add(
 				ctx,
 				int64(len(stats.Wantlist)),
 				metric.WithAttributes(
@@ -254,7 +254,7 @@ func (s *Sniffer) cidConsumer(ctx context.Context) {
 		case cidList := <-s.cidC:
 			cids := make([]SharedCid, 0)
 			for _, sCid := range cidList {
-				s.cidHist.Record(
+				s.cidCount.Add(
 					ctx,
 					1,
 					metric.WithAttributes(
@@ -354,7 +354,7 @@ func (s *Sniffer) initMetrics(ctx context.Context) error {
 	var err error
 	meter := s.config.Telemetry.Meter("sniffer")
 
-	s.cidHist, err = meter.Int64Gauge("total_seen_cids", metric.WithDescription("Number of cids seen during runtime"))
+	s.cidCount, err = meter.Int64Counter("total_seen_cids", metric.WithDescription("Number of cids seen during runtime"))
 	if err != nil {
 		return fmt.Errorf("total seen cids histogram: %w", err)
 	}
@@ -362,7 +362,7 @@ func (s *Sniffer) initMetrics(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("unique seen cids counter: %w", err)
 	}
-	s.bitswapStatsHist, err = meter.Int64Gauge("bitswap_stats", metric.WithDescription("Bitswap stats for sent and received msgs"))
+	s.bitswapStatsCount, err = meter.Int64Counter("bitswap_stats", metric.WithDescription("Bitswap stats for sent and received msgs"))
 	if err != nil {
 		return fmt.Errorf("bitswap stats histogram: %w", err)
 	}
