@@ -2,6 +2,11 @@ GOCC := "go"
 BIN := "./cmd"
 TARGET_PATH := "./build/bitswap-sniffer"
 
+GIT_PACKAGE := "github.com/probe-lab/bitswap-sniffer"
+REPO_SERVER := "019120760881.dkr.ecr.us-east-1.amazonaws.com"
+COMMIT := `git rev-parse --short HEAD`
+DATE := `date "+%Y-%m-%dT%H:%M:%SZ"`
+
 
 default:
     @just --list --justfile {{ justfile() }}
@@ -24,6 +29,13 @@ lint:
 	{{GOCC}} vet ./...
 	{{GOCC}} run honnef.co/go/tools/cmd/staticcheck@latest ./...
 	{{GOCC}} test -race -buildvcs -vet=off ./...
+
+docker:
+	docker build -t probe-lab/bitswap-sniffer:latest -t probe-lab/bitswap-sniffer-{{COMMIT}} -t {{REPO_SERVER}}/probelab:bitswap-sniffer-{{COMMIT}} .
+
+docker-push:
+	docker push {{REPO_SERVER}}/probelab:bitswap-sniffer-{{COMMIT}}
+	docker rmi {{REPO_SERVER}}/probelab:bitswap-sniffer-{{COMMIT}}
 
 # generates clickhouse migrations which work with a local docker deployment
 generate-local-clickhouse-migrations:
