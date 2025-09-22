@@ -33,6 +33,11 @@ type Discovery struct {
 func NewDiscovery(dhtCli *kaddht.IpfsDHT, bsNet network.BitSwapNetwork, log *logrus.Logger, cfg *DiscoveryConfig) (*Discovery, error) {
 	log.Info("Initialize Discovery service")
 
+	randCid, err := randomCid()
+	if err != nil {
+		return nil, fmt.Errorf("unable to create a new random Cid for the IPFS discovery. %W", err)
+	}
+
 	d := &Discovery{
 		cfg:       cfg,
 		log:       log,
@@ -46,13 +51,6 @@ func NewDiscovery(dhtCli *kaddht.IpfsDHT, bsNet network.BitSwapNetwork, log *log
 		return nil, err
 	}
 
-	/*
-		var err error
-		d.MeterLookups, err = cfg.Meter.Int64Counter("lookups", metric.WithDescription("Total number of performed lookups"))
-		if err != nil {
-			return nil, fmt.Errorf("lookups counter: %w", err)
-		}
-	*/
 	return d, nil
 }
 
@@ -99,3 +97,13 @@ func (d *Discovery) Serve(ctx context.Context) (err error) {
 		}
 	}
 }
+func (d *Discovery) initMetrics() error {
+	var err error
+	meter := d.cfg.Telemetry.Meter("discovery")
+	d.MeterLookups, err = meter.Int64Counter("lookups", metric.WithDescription("Total number of performed lookups"))
+	if err != nil {
+		return fmt.Errorf("lookups counter: %w", err)
+	}
+	return nil
+}
+
