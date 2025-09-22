@@ -3,3 +3,7 @@ build/
 
 # IDE
 .zed/
+
+# local
+ds/
+*.txt
