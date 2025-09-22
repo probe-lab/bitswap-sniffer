@@ -34,9 +34,10 @@ type Sniffer struct {
 	log    *logrus.Logger
 
 	// cid comsumer-related
-	cidCache *lru.Cache[string, struct{}]
-	cidC     chan []SharedCid
-	db       *ClickhouseDB
+	cidCache        *lru.Cache[string, struct{}]
+	cidC            chan []SharedCid
+	cidConsumerDone chan struct{}
+	db              *ClickhouseDB
 
 	// services
 	ds        *leveldb.Datastore
