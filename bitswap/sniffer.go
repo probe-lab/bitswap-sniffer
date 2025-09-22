@@ -110,9 +110,11 @@ func NewSniffer(ctx context.Context, config *SnifferConfig, dhtCli *kaddht.IpfsD
 
 	discv, err := NewDiscovery(
 		dhtCli,
+		bitswapNetworks,
 		log,
 		&DiscoveryConfig{
-			Interval: 15 * time.Second,
+			Interval:  config.DiscoveryInterval,
+			Telemetry: config.Telemetry,
 		},
 	)
 	if err != nil {
@@ -141,12 +143,6 @@ func (s *Sniffer) Serve(ctx context.Context) error {
 	// ensure that we close everything before leaving
 	defer func() {
 		var err error
-		// close db
-		err = s.db.Close()
-		if err != nil {
-			s.log.Errorf("closing db: %s", err.Error())
-		}
-
 		// close bitswap
 		err = s.bitswap.Close()
 		if err != nil {
@@ -169,6 +165,15 @@ func (s *Sniffer) Serve(ctx context.Context) error {
 		err = s.ds.Close()
 		if err != nil {
 			s.log.Errorf("closing datastore: %s", err.Error())
+		}
+
+		// close the cid consumer
+		<-s.cidConsumerDone
+
+		// close db
+		err = s.db.Close()
+		if err != nil {
+			s.log.Errorf("closing db: %s", err.Error())
 		}
 
 	}()
@@ -322,6 +327,7 @@ func (s *Sniffer) cidConsumer(ctx context.Context) {
 			}
 
 		case <-ctx.Done():
+			close(s.cidConsumerDone)
 			return
 		}
 	}

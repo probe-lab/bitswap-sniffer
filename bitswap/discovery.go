@@ -15,25 +15,35 @@ import (
 
 type DiscoveryConfig struct {
 	Interval  time.Duration
-	Telemetry metric.Meter
+	Telemetry metric.MeterProvider
 }
 
 type Discovery struct {
-	cfg    *DiscoveryConfig
-	log    *logrus.Logger
-	dhtCli *kaddht.IpfsDHT
+	cfg       *DiscoveryConfig
+	log       *logrus.Logger
+	dhtCli    *kaddht.IpfsDHT
+	bsNetwork network.BitSwapNetwork
+
+	randCid cid.Cid
 
 	// Metrics
 	MeterLookups metric.Int64Counter
 }
 
-func NewDiscovery(dhtCli *kaddht.IpfsDHT, log *logrus.Logger, cfg *DiscoveryConfig) (*Discovery, error) {
+func NewDiscovery(dhtCli *kaddht.IpfsDHT, bsNet network.BitSwapNetwork, log *logrus.Logger, cfg *DiscoveryConfig) (*Discovery, error) {
 	log.Info("Initialize Discovery service")
 
 	d := &Discovery{
-		cfg:    cfg,
-		log:    log,
-		dhtCli: dhtCli,
+		cfg:       cfg,
+		log:       log,
+		dhtCli:    dhtCli,
+		randCid:   randCid,
+		bsNetwork: bsNet,
+	}
+
+	err = d.initMetrics()
+	if err != nil {
+		return nil, err
 	}
 
 	/*
