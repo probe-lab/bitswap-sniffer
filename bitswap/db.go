@@ -6,6 +6,7 @@ import (
 	"embed"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -60,10 +61,11 @@ type ClickhouseDB struct {
 	config *ChConfig
 	log    *logrus.Logger
 
-	conn         driver.Conn
-	cidC         chan []SharedCid
-	cidBatcher   *cidBatcher
-	closeFlusher chan struct{}
+	conn           driver.Conn
+	cidC           chan []SharedCid
+	cidBatcher     *cidBatcher
+	closeFlusher   chan struct{}
+	flusherClosedC chan struct{}
 
 	// metrics
 	insertRowCount         metric.Int64Counter
@@ -72,11 +74,12 @@ type ClickhouseDB struct {
 
 func NewClickhouseDB(config *ChConfig, log *logrus.Logger) (*ClickhouseDB, error) {
 	db := &ClickhouseDB{
-		config:       config,
-		log:          log,
-		cidBatcher:   newCidBatcher(config.BatchSize),
-		cidC:         make(chan []SharedCid, config.Flushers),
-		closeFlusher: make(chan struct{}),
+		config:         config,
+		log:            log,
+		cidBatcher:     newCidBatcher(config.BatchSize),
+		cidC:           make(chan []SharedCid, config.Flushers),
+		closeFlusher:   make(chan struct{}),
+		flusherClosedC: make(chan struct{}),
 	}
 	return db, nil
 }
@@ -110,8 +113,13 @@ func (db *ClickhouseDB) openConnection(ctx context.Context) (err error) {
 
 func (db *ClickhouseDB) internalFlushingLoop(ctx context.Context, workers int) {
 	flusherT := time.NewTicker(MaxFlushInterval)
+	var flusherWg sync.WaitGroup
+	flushersDoneC := make(chan struct{})
+
 	for w := range workers {
+		flusherWg.Add(1)
 		go func(wId int) {
+			defer flusherWg.Done()
 			db.log.WithField("worker", wId).Info("new db worker")
 			for {
 				select {
@@ -135,6 +143,15 @@ func (db *ClickhouseDB) internalFlushingLoop(ctx context.Context, workers int) {
 
 				case <-db.closeFlusher:
 					db.log.WithField("worker", wId).Debug("closing worker, control close")
+					persistCids := db.cidBatcher.Reset()
+					opCtx, opCancel := context.WithTimeout(ctx, 5*time.Second)
+					defer opCancel()
+					batch, err := PrepareSharedCidsBatch(opCtx, db.conn, persistCids)
+					if err != nil {
+						db.log.Errorf("batching shared cids %v", err)
+						return
+					}
+					db.send(opCtx, batch, CidsTableName)
 					return
 
 				case <-ctx.Done():
@@ -144,7 +161,12 @@ func (db *ClickhouseDB) internalFlushingLoop(ctx context.Context, workers int) {
 			}
 		}(w)
 	}
+	defer func() {
+		flusherWg.Wait()
+		close(flushersDoneC)
+	}()
 
+periodicFlushLoop:
 	for {
 		select {
 		case <-flusherT.C:
@@ -166,13 +188,15 @@ func (db *ClickhouseDB) internalFlushingLoop(ctx context.Context, workers int) {
 
 		case <-db.closeFlusher:
 			db.log.Warn("closing flusher, control close")
-			return
+			break periodicFlushLoop
 
 		case <-ctx.Done():
 			db.log.Warn("closing flusher, ctx died")
-			return
+			break periodicFlushLoop
 		}
 	}
+	<-flushersDoneC
+	close(db.flusherClosedC)
 }
 
 func (db *ClickhouseDB) send(ctx context.Context, batch driver.Batch, table string) {
@@ -214,6 +238,12 @@ func (db *ClickhouseDB) PersistCidBatch(ctx context.Context, cids []SharedCid) {
 
 func (db *ClickhouseDB) Close() error {
 	close(db.closeFlusher)
+	select {
+	case <-db.flusherClosedC:
+		db.log.Debug("flushing routines were shutdown")
+	case <-time.After(15 * time.Second):
+		db.log.Errorf("flushing db before shutting down took more than 15 secs, something went wrong!")
+	}
 	return db.conn.Close()
 }
 

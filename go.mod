@@ -10,7 +10,8 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/ipfs/boxo v0.34.0
 	github.com/ipfs/go-cid v0.5.0
-	github.com/ipfs/go-datastore v0.8.4
+	github.com/ipfs/go-datastore v0.9.0
+	github.com/ipfs/go-ds-leveldb v0.5.2
 	github.com/libp2p/go-libp2p v0.43.0
 	github.com/libp2p/go-libp2p-kad-dht v0.34.0
 	github.com/multiformats/go-multiaddr v0.16.1
@@ -47,6 +48,7 @@ require (
 	github.com/go-faster/errors v0.7.1 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
+	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/gopacket v1.1.19 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
@@ -55,10 +57,10 @@ require (
 	github.com/hashicorp/golang-lru v1.0.2 // indirect
 	github.com/huin/goupnp v1.3.0 // indirect
 	github.com/ipfs/bbloom v0.0.4 // indirect
-	github.com/ipfs/go-block-format v0.2.2 // indirect
+	github.com/ipfs/go-block-format v0.2.3 // indirect
 	github.com/ipfs/go-ipfs-delay v0.0.1 // indirect
 	github.com/ipfs/go-ipfs-pq v0.0.3 // indirect
-	github.com/ipfs/go-ipld-format v0.6.2 // indirect
+	github.com/ipfs/go-ipld-format v0.6.3 // indirect
 	github.com/ipfs/go-log/v2 v2.8.1 // indirect
 	github.com/ipfs/go-metrics-interface v0.3.0 // indirect
 	github.com/ipfs/go-peertaskqueue v0.8.2 // indirect
@@ -95,7 +97,8 @@ require (
 	github.com/multiformats/go-multistream v0.6.1 // indirect
 	github.com/multiformats/go-varint v0.1.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
-	github.com/paulmach/orb v0.11.1 // indirect
+	github.com/nxadm/tail v1.4.11 // indirect
+	github.com/paulmach/orb v0.12.0 // indirect
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect
 	github.com/pierrec/lz4/v4 v4.1.22 // indirect
 	github.com/pion/datachannel v1.5.10 // indirect
@@ -129,6 +132,7 @@ require (
 	github.com/segmentio/asm v1.2.0 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
+	github.com/syndtr/goleveldb v1.0.0 // indirect
 	github.com/whyrusleeping/go-keyspace v0.0.0-20160322163242-5b898ac5add1 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect

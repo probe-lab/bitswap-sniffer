@@ -16,6 +16,7 @@ var runConfig = struct {
 	CacheSize         int
 	BatcherSize       int
 	Flushers          int
+	LevelDB           string
 	ChDriver          string
 	ChHost            string
 	ChUser            string
@@ -31,6 +32,7 @@ var runConfig = struct {
 	CacheSize:         65_536, // arbitrary number
 	BatcherSize:       1_024,  // arbitrary number
 	Flushers:          1,
+	LevelDB:           "./ds",
 	ChDriver:          "local",
 	ChHost:            "127.0.0.1:9000",
 	ChUser:            "username",
@@ -77,6 +79,13 @@ var runFlags = []cli.Flag{
 		Value:       runConfig.CacheSize,
 		Destination: &runConfig.CacheSize,
 		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_CACHE_SIZE"),
+	},
+	&cli.IntFlag{
+		Name:        "ds.path",
+		Usage:       "Path to the LevelDB datastore",
+		Value:       runConfig.LevelDB,
+		Destination: &runConfig.LevelDB,
+		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_LEVEL_DB"),
 	},
 	&cli.IntFlag{
 		Name:        "batcher.size",
@@ -151,6 +160,7 @@ func scanAction(ctx context.Context, cmd *cli.Command) error {
 		"connection-timeout": runConfig.ConnectionTimeout,
 		"cache-size":         runConfig.CacheSize,
 		"batcher-size":       runConfig.BatcherSize,
+		"level-db":           runConfig.LevelDB,
 		"ch-flushers":        runConfig.Flushers,
 		"ch-driver":          runConfig.ChDriver,
 		"ch-host":            runConfig.ChHost,
@@ -165,6 +175,7 @@ func scanAction(ctx context.Context, cmd *cli.Command) error {
 		Libp2pPort:  runConfig.Libp2pPort,
 		DialTimeout: runConfig.ConnectionTimeout,
 		CacheSize:   runConfig.CacheSize,
+		LevelDB:     runConfig.LevelDB,
 		Logger:      log,
 		Telemetry:   rootConfig.MetricsProvider,
 	}
