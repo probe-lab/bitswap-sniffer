@@ -14,6 +14,7 @@ import (
 	"github.com/ipfs/boxo/bitswap/network/httpnet"
 	"github.com/ipfs/boxo/blockstore"
 	"github.com/ipfs/go-cid"
+	leveldb "github.com/ipfs/go-ds-leveldb"
 	kaddht "github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -25,7 +26,6 @@ import (
 	routingdisc "github.com/libp2p/go-libp2p/p2p/discovery/routing"
 
 	"github.com/ipfs/go-datastore"
-	dsync "github.com/ipfs/go-datastore/sync"
 	mh "github.com/multiformats/go-multihash"
 )
 
@@ -39,6 +39,8 @@ type Sniffer struct {
 	db       *ClickhouseDB
 
 	// services
+	ds        *leveldb.Datastore
+	bs        blockstore.Blockstore
 	bitswap   *bitswap.Bitswap
 	dhtCli    *kaddht.IpfsDHT
 	discovery *Discovery
@@ -48,12 +50,22 @@ type Sniffer struct {
 	uniqueCidCount    metric.Int64Counter
 	bitswapStatsCount metric.Int64Counter
 	bitswapPeerCount  metric.Int64Gauge
+	diskUsageGauge    metric.Float64Gauge
 }
 
 func NewSniffer(ctx context.Context, config *SnifferConfig, dhtCli *kaddht.IpfsDHT, db *ClickhouseDB) (*Sniffer, error) {
 	log := config.Logger
 	cidC := make(chan []SharedCid)
-	ds := dsync.MutexWrap(datastore.NewMapDatastore())
+
+	// create a leveldb-datastore
+	ds, err := leveldb.NewDatastore(config.LevelDB, nil)
+	if err != nil {
+		return nil, fmt.Errorf("leveldb datastore: %w", err)
+	}
+	log.Infoln("Deleting old datastore...")
+	if err := ds.Delete(ctx, datastore.NewKey("/")); err != nil {
+		log.WithError(err).Warnln("Couldn't delete old datastore")
+	}
 	bs := blockstore.NewBlockstore(ds)
 	bs = blockstore.NewIdStore(bs)
 
@@ -63,6 +75,8 @@ func NewSniffer(ctx context.Context, config *SnifferConfig, dhtCli *kaddht.IpfsD
 		dhtCli.Host(),
 		httpnet.WithHTTPWorkers(1),
 		httpnet.WithUserAgent("probelab-sniffer"),
+		httpnet.WithIdleConnTimeout(1*time.Hour),
+		httpnet.WithMaxIdleConns(300),
 	)
 	bitswapNetworks := network.New(dhtCli.Host().Peerstore(), bitswapLibp2p, bitswapHTTP)
 
@@ -113,6 +127,8 @@ func NewSniffer(ctx context.Context, config *SnifferConfig, dhtCli *kaddht.IpfsD
 		config:    config,
 		cidCache:  cidCache,
 		cidC:      cidC,
+		ds:        ds,
+		bs:        bs,
 		bitswap:   bsServic,
 		dhtCli:    dhtCli,
 		db:        db,
@@ -129,6 +145,7 @@ func (s *Sniffer) Serve(ctx context.Context) error {
 
 	go s.discovery.Serve(ctx)
 	go s.cidConsumer(ctx)
+	go s.measureDiskUsage(ctx)
 
 	err := s.makeSnifferAppealing(ctx)
 	if err != nil {
@@ -369,7 +386,9 @@ func (s *Sniffer) initMetrics(ctx context.Context) error {
 	s.bitswapPeerCount, err = meter.Int64Gauge("bitswap_peer_count", metric.WithDescription("Number of peers connected at the Bitswap level"))
 	if err != nil {
 		return fmt.Errorf("bitswap peer count gauge: %w", err)
+	s.diskUsageGauge, err = meter.Float64Gauge("datastore_disk_usage", metric.WithDescription("Disk usage of bitswap's datastore"))
+	if err != nil {
+		return fmt.Errorf("datastore disk usage gauge %w", err)
 	}
-
 	return nil
 }

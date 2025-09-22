@@ -25,6 +25,7 @@ type SnifferConfig struct {
 	Libp2pPort  int
 	DialTimeout time.Duration
 	CacheSize   int
+	LevelDB     string
 
 	Logger    *logrus.Logger
 	Telemetry metric.MeterProvider
