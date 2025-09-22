@@ -49,30 +49,34 @@ var rootFlags = []cli.Flag{
 		Usage:       "Level of the logs",
 		Value:       rootConfig.LogLevel,
 		Destination: &rootConfig.LogLevel,
+		Sources:     cli.EnvVars("BITSWAP_SNIFFER_LOG_LEVEL"),
 	},
 	&cli.StringFlag{
 		Name:        "log.format",
 		Usage:       "Format of the logs [text, json]",
 		Value:       rootConfig.LogLevel,
 		Destination: &rootConfig.LogLevel,
+		Sources:     cli.EnvVars("BITSWAP_SNIFFER_LOG_FORMAT"),
 	},
 	&cli.StringFlag{
 		Name:        "metrics.host",
 		Usage:       "IP for the metrics OP host",
 		Value:       rootConfig.MetricsHost,
 		Destination: &rootConfig.MetricsHost,
+		Sources:     cli.EnvVars("BITSWAP_SNIFFER_METRICS_HOST"),
 	},
 	&cli.IntFlag{
 		Name:        "metrics.port",
 		Usage:       "Port for the metrics OP host",
 		Value:       rootConfig.MetricsPort,
 		Destination: &rootConfig.MetricsPort,
+		Sources:     cli.EnvVars("BITSWAP_SNIFFER_METRICS_PORT"),
 	},
 }
 
 func main() {
 	// Set log level from environment variable
-	if level := os.Getenv("LOGRUS_LEVEL"); level != "" {
+	if level := os.Getenv("LOG_LEVEL"); level != "" {
 		if parsedLevel, err := logrus.ParseLevel(level); err == nil {
 			logrus.SetLevel(parsedLevel)
 		}
