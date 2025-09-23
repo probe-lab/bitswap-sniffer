@@ -40,7 +40,7 @@ var runConfig = struct {
 	ChHost:            "127.0.0.1:9000",
 	ChUser:            "username",
 	ChPassword:        "password",
-	ChDatabase:        "bitswap_sniffer_db",
+	ChDatabase:        "bitswap_sniffer_ipfs",
 	ChCluster:         "",
 	ChMigrationEngine: "TinyLog",
 	ChSecure:          false,
@@ -135,15 +135,15 @@ var runFlags = []cli.Flag{
 	&cli.StringFlag{
 		Name:        "ch.password",
 		Usage:       "Password for the user of the given Database",
-		Value:       runConfig.ChUser,
-		Destination: &runConfig.ChUser,
+		Value:       runConfig.ChPassword,
+		Destination: &runConfig.ChPassword,
 		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_CH_PASSWORD"),
 	},
 	&cli.StringFlag{
 		Name:        "ch.database",
 		Usage:       "Name of the Database that will keep all the raw data",
-		Value:       runConfig.ChUser,
-		Destination: &runConfig.ChUser,
+		Value:       runConfig.ChDatabase,
+		Destination: &runConfig.ChDatabase,
 		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_CH_DATABASE"),
 	},
 	&cli.StringFlag{
@@ -159,6 +159,13 @@ var runFlags = []cli.Flag{
 		Value:       runConfig.ChSecure,
 		Destination: &runConfig.ChSecure,
 		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_CH_SECURE"),
+	},
+	&cli.StringFlag{
+		Name:        "ch.engine",
+		Usage:       "CH engine that will be used for the migrations",
+		Value:       runConfig.ChMigrationEngine,
+		Destination: &runConfig.ChMigrationEngine,
+		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_CH_ENGINE"),
 	},
 }
 
@@ -179,6 +186,7 @@ func scanAction(ctx context.Context, cmd *cli.Command) error {
 		"ch-database":        runConfig.ChDatabase,
 		"ch-cluster":         runConfig.ChCluster,
 		"ch-secure":          runConfig.ChSecure,
+		"ch-engine":          runConfig.ChMigrationEngine,
 	}).Info("running run command...")
 
 	snifferConfig := &bitswap.SnifferConfig{
