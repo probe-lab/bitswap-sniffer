@@ -160,6 +160,13 @@ var runFlags = []cli.Flag{
 		Destination: &runConfig.ChSecure,
 		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_CH_SECURE"),
 	},
+	&cli.StringFlag{
+		Name:        "ch.engine",
+		Usage:       "CH engine that will be used for the migrations",
+		Value:       runConfig.ChMigrationEngine,
+		Destination: &runConfig.ChMigrationEngine,
+		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_CH_ENGINE"),
+	},
 }
 
 func scanAction(ctx context.Context, cmd *cli.Command) error {
@@ -179,6 +186,7 @@ func scanAction(ctx context.Context, cmd *cli.Command) error {
 		"ch-database":        runConfig.ChDatabase,
 		"ch-cluster":         runConfig.ChCluster,
 		"ch-secure":          runConfig.ChSecure,
+		"ch-engine":          runConfig.ChMigrationEngine,
 	}).Info("running run command...")
 
 	snifferConfig := &bitswap.SnifferConfig{

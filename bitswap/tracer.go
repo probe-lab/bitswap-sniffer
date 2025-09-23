@@ -52,6 +52,7 @@ func (t *CidStreamTracer) streamCid(direction string, pid peer.ID, bmsg bsmsg.Bi
 				Direction: direction,
 				Cid:       wMsg.Cid.String(),
 				Producer:  producerStr,
+				By:        pid.String(),
 				Type:      "want",
 			},
 		)
@@ -67,6 +68,7 @@ func (t *CidStreamTracer) streamCid(direction string, pid peer.ID, bmsg bsmsg.Bi
 				Direction: direction,
 				Cid:       hMsg.String(),
 				Producer:  producerStr,
+				By:        pid.String(),
 				Type:      "have",
 			},
 		)
@@ -82,6 +84,7 @@ func (t *CidStreamTracer) streamCid(direction string, pid peer.ID, bmsg bsmsg.Bi
 				Direction: direction,
 				Cid:       dhMsg.String(),
 				Producer:  producerStr,
+				By:        pid.String(),
 				Type:      "dont-have",
 			},
 		)
@@ -97,6 +100,7 @@ func (t *CidStreamTracer) streamCid(direction string, pid peer.ID, bmsg bsmsg.Bi
 				Direction: direction,
 				Cid:       bMsg.String(),
 				Producer:  producerStr,
+				By:        pid.String(),
 				Type:      "block",
 			},
 		)
