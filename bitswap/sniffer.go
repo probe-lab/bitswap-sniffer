@@ -34,10 +34,11 @@ type Sniffer struct {
 	log    *logrus.Logger
 
 	// cid comsumer-related
-	cidCache        *lru.Cache[string, struct{}]
-	cidC            chan []SharedCid
-	cidConsumerDone chan struct{}
-	db              *ClickhouseDB
+	cidCache            *lru.Cache[string, struct{}]
+	cidC                chan []SharedCid
+	cidConsumerDone     chan struct{}
+	bitswapAppealerDone chan struct{}
+	db                  *ClickhouseDB
 
 	// services
 	ds        *leveldb.Datastore
@@ -75,10 +76,10 @@ func NewSniffer(ctx context.Context, config *SnifferConfig, dhtCli *kaddht.IpfsD
 	bitswapLibp2p := bsnet.NewFromIpfsHost(dhtCli.Host())
 	bitswapHTTP := httpnet.New(
 		dhtCli.Host(),
-		httpnet.WithHTTPWorkers(1),
+		httpnet.WithHTTPWorkers(5),
 		httpnet.WithUserAgent("probelab-sniffer"),
 		httpnet.WithIdleConnTimeout(1*time.Hour),
-		httpnet.WithMaxIdleConns(300),
+		httpnet.WithMaxIdleConns(500),
 	)
 	bitswapNetworks := network.New(dhtCli.Host().Peerstore(), bitswapLibp2p, bitswapHTTP)
 
@@ -107,6 +108,7 @@ func NewSniffer(ctx context.Context, config *SnifferConfig, dhtCli *kaddht.IpfsD
 		bs,
 		bitswap.WithTracer(tracer),
 		bitswap.WithServerEnabled(true),
+		bitswap.SetSendDontHaves(true),
 	)
 
 	discv, err := NewDiscovery(
@@ -127,16 +129,18 @@ func NewSniffer(ctx context.Context, config *SnifferConfig, dhtCli *kaddht.IpfsD
 		return nil, err
 	}
 	return &Sniffer{
-		log:       log,
-		config:    config,
-		cidCache:  cidCache,
-		cidC:      cidC,
-		ds:        ds,
-		bs:        bs,
-		bitswap:   bsServic,
-		dhtCli:    dhtCli,
-		db:        db,
-		discovery: discv,
+		log:                 log,
+		config:              config,
+		cidCache:            cidCache,
+		cidC:                cidC,
+		cidConsumerDone:     make(chan struct{}),
+		bitswapAppealerDone: make(chan struct{}),
+		ds:                  ds,
+		bs:                  bs,
+		bitswap:             bsServic,
+		dhtCli:              dhtCli,
+		db:                  db,
+		discovery:           discv,
 	}, nil
 }
 
@@ -170,6 +174,7 @@ func (s *Sniffer) Serve(ctx context.Context) error {
 
 		// close the cid consumer
 		<-s.cidConsumerDone
+		<-s.bitswapAppealerDone
 
 		// close db
 		err = s.db.Close()
@@ -286,6 +291,7 @@ func (s *Sniffer) makeSnifferAppealing(ctx context.Context) error {
 		for {
 			select {
 			case <-ctx.Done():
+				close(s.bitswapAppealerDone)
 				return
 			case <-time.After(15 * time.Second):
 				s.log.WithField("cid", randCid.String()).Info("Bitswap appealer: pretending to fetch cid from bitswap...")

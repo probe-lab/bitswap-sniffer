@@ -102,7 +102,7 @@ func (c *SnifferConfig) Libp2pOptions() ([]libp2p.Option, error) {
 
 func (c *SnifferConfig) DHTClientOptions() ([]kaddht.Option, error) {
 	return []kaddht.Option{
-		kaddht.Mode(kaddht.ModeAutoServer),
+		kaddht.Mode(kaddht.ModeServer),
 		kaddht.BootstrapPeers(kaddht.GetDefaultBootstrapPeerAddrInfos()...),
 	}, nil
 }

@@ -34,6 +34,9 @@ func (t *CidStreamTracer) MessageSent(pid peer.ID, bmsg bsmsg.BitSwapMessage) {
 }
 
 func (t *CidStreamTracer) streamCid(direction string, pid peer.ID, bmsg bsmsg.BitSwapMessage) {
+	if bmsg.Empty() {
+		return
+	}
 	timestamp := time.Now()
 
 	sharedCids := make([]SharedCid, len(bmsg.Wantlist())+len(bmsg.Haves())+len(bmsg.DontHaves())+len(bmsg.Blocks()))

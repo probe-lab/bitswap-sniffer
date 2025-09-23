@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ipfs/boxo/bitswap/network"
 	kaddht "github.com/libp2p/go-libp2p-kad-dht"
 
 	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
 
@@ -24,8 +26,6 @@ type Discovery struct {
 	dhtCli    *kaddht.IpfsDHT
 	bsNetwork network.BitSwapNetwork
 
-	randCid cid.Cid
-
 	// Metrics
 	MeterLookups metric.Int64Counter
 }
@@ -33,20 +33,14 @@ type Discovery struct {
 func NewDiscovery(dhtCli *kaddht.IpfsDHT, bsNet network.BitSwapNetwork, log *logrus.Logger, cfg *DiscoveryConfig) (*Discovery, error) {
 	log.Info("Initialize Discovery service")
 
-	randCid, err := randomCid()
-	if err != nil {
-		return nil, fmt.Errorf("unable to create a new random Cid for the IPFS discovery. %W", err)
-	}
-
 	d := &Discovery{
 		cfg:       cfg,
 		log:       log,
 		dhtCli:    dhtCli,
-		randCid:   randCid,
 		bsNetwork: bsNet,
 	}
 
-	err = d.initMetrics()
+	err := d.initMetrics()
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +70,7 @@ func (d *Discovery) Serve(ctx context.Context) (err error) {
 		}).Info("DHT discovery: finished lookup")
 		timeoutCancel()
 
-		// d.MeterLookups.Add(ctx, 1, metric.WithAttributes(attribute.Bool("success", err == nil)))
+		d.MeterLookups.Add(ctx, 1, metric.WithAttributes(attribute.Bool("success", err == nil)))
 		if errors.Is(ctx.Err(), context.Canceled) {
 			return nil
 		} else if err != nil || len(peers) == 0 {
@@ -106,4 +100,3 @@ func (d *Discovery) initMetrics() error {
 	}
 	return nil
 }
-
