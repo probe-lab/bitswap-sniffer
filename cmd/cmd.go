@@ -54,8 +54,8 @@ var rootFlags = []cli.Flag{
 	&cli.StringFlag{
 		Name:        "log.format",
 		Usage:       "Format of the logs [text, json]",
-		Value:       rootConfig.LogLevel,
-		Destination: &rootConfig.LogLevel,
+		Value:       rootConfig.LogFormat,
+		Destination: &rootConfig.LogFormat,
 		Sources:     cli.EnvVars("BITSWAP_SNIFFER_LOG_FORMAT"),
 	},
 	&cli.StringFlag{

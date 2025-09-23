@@ -9,4 +9,4 @@ FROM debian:bookworm-slim
 WORKDIR /app
 COPY --from=builder /app/bitswap-sniffer /app/bitswap-sniffer
 ENTRYPOINT ["./bitswap-sniffer"]
-CMD ["run --help"]
+CMD ["run"]
