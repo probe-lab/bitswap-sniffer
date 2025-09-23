@@ -136,14 +136,14 @@ var runFlags = []cli.Flag{
 		Name:        "ch.password",
 		Usage:       "Password for the user of the given Database",
 		Value:       runConfig.ChUser,
-		Destination: &runConfig.ChUser,
+		Destination: &runConfig.ChPassword,
 		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_CH_PASSWORD"),
 	},
 	&cli.StringFlag{
 		Name:        "ch.database",
 		Usage:       "Name of the Database that will keep all the raw data",
-		Value:       runConfig.ChUser,
-		Destination: &runConfig.ChUser,
+		Value:       runConfig.ChDatabase,
+		Destination: &runConfig.ChDatabase,
 		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_CH_DATABASE"),
 	},
 	&cli.StringFlag{
