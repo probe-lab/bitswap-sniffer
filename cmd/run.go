@@ -40,7 +40,7 @@ var runConfig = struct {
 	ChHost:            "127.0.0.1:9000",
 	ChUser:            "username",
 	ChPassword:        "password",
-	ChDatabase:        "bitswap_sniffer_db",
+	ChDatabase:        "bitswap_sniffer_ipfs",
 	ChCluster:         "",
 	ChMigrationEngine: "TinyLog",
 	ChSecure:          false,
@@ -135,7 +135,7 @@ var runFlags = []cli.Flag{
 	&cli.StringFlag{
 		Name:        "ch.password",
 		Usage:       "Password for the user of the given Database",
-		Value:       runConfig.ChUser,
+		Value:       runConfig.ChPassword,
 		Destination: &runConfig.ChPassword,
 		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_CH_PASSWORD"),
 	},
