@@ -76,7 +76,7 @@ var rootFlags = []cli.Flag{
 
 func main() {
 	// Set log level from environment variable
-	if level := os.Getenv("LOG_LEVEL"); level != "" {
+	if level := os.Getenv("BITSWAP_SNIFFER_LOG_LEVEL"); level != "" {
 		if parsedLevel, err := logrus.ParseLevel(level); err == nil {
 			logrus.SetLevel(parsedLevel)
 		}
@@ -99,7 +99,7 @@ func rootBefore(c context.Context, cmd *cli.Command) (context.Context, error) {
 
 	// read CLI args and configure the global logger
 	rootConfig.Logger = logrus.New()
-	if err := configureLogger(c, cmd, rootConfig.Logger); err != nil {
+	if err := configureLogger(c, rootConfig.Logger, rootConfig.LogLevel); err != nil {
 		return c, err
 	}
 
@@ -122,22 +122,20 @@ func rootAfter(c context.Context, cmd *cli.Command) error {
 	return nil
 }
 
-func configureLogger(_ context.Context, cmd *cli.Command, logger *logrus.Logger) error {
+func configureLogger(_ context.Context, logger *logrus.Logger, level string) error {
 	// log level
 	logLevel := logrus.InfoLevel
-	if cmd.IsSet("log.level") {
-		switch strings.ToLower(rootConfig.LogLevel) {
-		case "debug":
-			logLevel = logrus.DebugLevel
-		case "info":
-			logLevel = logrus.InfoLevel
-		case "warn":
-			logLevel = logrus.WarnLevel
-		case "error":
-			logLevel = logrus.ErrorLevel
-		default:
-			return fmt.Errorf("unknown log level: %s", rootConfig.LogLevel)
-		}
+	switch strings.ToLower(level) {
+	case "debug":
+		logLevel = logrus.DebugLevel
+	case "info":
+		logLevel = logrus.InfoLevel
+	case "warn":
+		logLevel = logrus.WarnLevel
+	case "error":
+		logLevel = logrus.ErrorLevel
+	default:
+		return fmt.Errorf("unknown log level: %s", rootConfig.LogLevel)
 	}
 	logger.SetLevel(logrus.Level(logLevel))
 

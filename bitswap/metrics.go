@@ -118,3 +118,22 @@ func ServeMetrics(ctx context.Context, host string, port int) func(context.Conte
 
 	return shutdownFunc
 }
+
+func (s *Sniffer) measureDiskUsage(ctx context.Context) {
+	ticker := time.NewTicker(time.Minute)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+
+		usage, err := s.ds.DiskUsage(ctx)
+		if err != nil {
+			log.WithError(err).Warnln("Failed getting disk usage")
+			continue
+		}
+
+		s.diskUsageGauge.Record(ctx, float64(usage))
+	}
+}

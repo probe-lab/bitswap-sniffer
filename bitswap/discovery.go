@@ -7,42 +7,44 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ipfs/boxo/bitswap/network"
 	kaddht "github.com/libp2p/go-libp2p-kad-dht"
 
 	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
 
 type DiscoveryConfig struct {
 	Interval  time.Duration
-	Telemetry metric.Meter
+	Telemetry metric.MeterProvider
 }
 
 type Discovery struct {
-	cfg    *DiscoveryConfig
-	log    *logrus.Logger
-	dhtCli *kaddht.IpfsDHT
+	cfg       *DiscoveryConfig
+	log       *logrus.Logger
+	dhtCli    *kaddht.IpfsDHT
+	bsNetwork network.BitSwapNetwork
 
 	// Metrics
 	MeterLookups metric.Int64Counter
 }
 
-func NewDiscovery(dhtCli *kaddht.IpfsDHT, log *logrus.Logger, cfg *DiscoveryConfig) (*Discovery, error) {
+func NewDiscovery(dhtCli *kaddht.IpfsDHT, bsNet network.BitSwapNetwork, log *logrus.Logger, cfg *DiscoveryConfig) (*Discovery, error) {
 	log.Info("Initialize Discovery service")
 
 	d := &Discovery{
-		cfg:    cfg,
-		log:    log,
-		dhtCli: dhtCli,
+		cfg:       cfg,
+		log:       log,
+		dhtCli:    dhtCli,
+		bsNetwork: bsNet,
 	}
 
-	/*
-		var err error
-		d.MeterLookups, err = cfg.Meter.Int64Counter("lookups", metric.WithDescription("Total number of performed lookups"))
-		if err != nil {
-			return nil, fmt.Errorf("lookups counter: %w", err)
-		}
-	*/
+	err := d.initMetrics()
+	if err != nil {
+		return nil, err
+	}
+
 	return d, nil
 }
 
@@ -68,7 +70,7 @@ func (d *Discovery) Serve(ctx context.Context) (err error) {
 		}).Info("DHT discovery: finished lookup")
 		timeoutCancel()
 
-		// d.MeterLookups.Add(ctx, 1, metric.WithAttributes(attribute.Bool("success", err == nil)))
+		d.MeterLookups.Add(ctx, 1, metric.WithAttributes(attribute.Bool("success", err == nil)))
 		if errors.Is(ctx.Err(), context.Canceled) {
 			return nil
 		} else if err != nil || len(peers) == 0 {
@@ -88,4 +90,13 @@ func (d *Discovery) Serve(ctx context.Context) (err error) {
 			continue
 		}
 	}
+}
+func (d *Discovery) initMetrics() error {
+	var err error
+	meter := d.cfg.Telemetry.Meter("discovery")
+	d.MeterLookups, err = meter.Int64Counter("lookups", metric.WithDescription("Total number of performed lookups"))
+	if err != nil {
+		return fmt.Errorf("lookups counter: %w", err)
+	}
+	return nil
 }

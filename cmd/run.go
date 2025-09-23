@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/probe-lab/bitswap-sniffer/bitswap"
 	"github.com/sirupsen/logrus"
 	cli "github.com/urfave/cli/v3"
@@ -16,6 +17,8 @@ var runConfig = struct {
 	CacheSize         int
 	BatcherSize       int
 	Flushers          int
+	LevelDB           string
+	DiscoveryInterval time.Duration
 	ChDriver          string
 	ChHost            string
 	ChUser            string
@@ -27,10 +30,12 @@ var runConfig = struct {
 }{
 	Libp2pHost:        "127.0.0.1",
 	Libp2pPort:        9020,
-	ConnectionTimeout: 10 * time.Second,
+	ConnectionTimeout: 15 * time.Second,
 	CacheSize:         65_536, // arbitrary number
 	BatcherSize:       1_024,  // arbitrary number
-	Flushers:          1,
+	Flushers:          5,
+	LevelDB:           "./ds",
+	DiscoveryInterval: 1 * time.Minute,
 	ChDriver:          "local",
 	ChHost:            "127.0.0.1:9000",
 	ChUser:            "username",
@@ -77,6 +82,20 @@ var runFlags = []cli.Flag{
 		Value:       runConfig.CacheSize,
 		Destination: &runConfig.CacheSize,
 		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_CACHE_SIZE"),
+	},
+	&cli.StringFlag{
+		Name:        "ds.path",
+		Usage:       "Path to the LevelDB datastore",
+		Value:       runConfig.LevelDB,
+		Destination: &runConfig.LevelDB,
+		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_LEVEL_DB"),
+	},
+	&cli.DurationFlag{
+		Name:        "discovery.interval",
+		Usage:       "Interval between dht peer discovery lookups",
+		Value:       runConfig.DiscoveryInterval,
+		Destination: &runConfig.DiscoveryInterval,
+		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_DISCOVERY_INTERVAL"),
 	},
 	&cli.IntFlag{
 		Name:        "batcher.size",
@@ -151,6 +170,8 @@ func scanAction(ctx context.Context, cmd *cli.Command) error {
 		"connection-timeout": runConfig.ConnectionTimeout,
 		"cache-size":         runConfig.CacheSize,
 		"batcher-size":       runConfig.BatcherSize,
+		"level-db":           runConfig.LevelDB,
+		"discv-interval":     runConfig.DiscoveryInterval,
 		"ch-flushers":        runConfig.Flushers,
 		"ch-driver":          runConfig.ChDriver,
 		"ch-host":            runConfig.ChHost,
@@ -161,21 +182,23 @@ func scanAction(ctx context.Context, cmd *cli.Command) error {
 	}).Info("running run command...")
 
 	snifferConfig := &bitswap.SnifferConfig{
-		Libp2pHost:  runConfig.Libp2pHost,
-		Libp2pPort:  runConfig.Libp2pPort,
-		DialTimeout: runConfig.ConnectionTimeout,
-		CacheSize:   runConfig.CacheSize,
-		Logger:      log,
-		Telemetry:   rootConfig.MetricsProvider,
+		Libp2pHost:        runConfig.Libp2pHost,
+		Libp2pPort:        runConfig.Libp2pPort,
+		DialTimeout:       runConfig.ConnectionTimeout,
+		DiscoveryInterval: runConfig.DiscoveryInterval,
+		CacheSize:         runConfig.CacheSize,
+		LevelDB:           runConfig.LevelDB,
+		Logger:            log,
+		Telemetry:         rootConfig.MetricsProvider,
 	}
 	err := snifferConfig.Validate()
 	if err != nil {
-		return err
+		return errors.Wrap(err, "validating conf")
 	}
 
-	dhtCli, err := snifferConfig.CreateDHTClient(ctx)
+	dhtCli, err := snifferConfig.CreateDHTServer(ctx)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "creating dht server")
 	}
 
 	conDetails := &bitswap.ChConfig{
@@ -193,17 +216,18 @@ func scanAction(ctx context.Context, cmd *cli.Command) error {
 	}
 	chCli, err := bitswap.NewClickhouseDB(conDetails, log)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "opening ch db")
+
 	}
 
 	sniffer, err := bitswap.NewSniffer(ctx, snifferConfig, dhtCli, chCli)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "creating bitswap sniffer")
 	}
 
 	err = sniffer.Init(ctx)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "init bitswap sniffer")
 	}
 	return sniffer.Serve(ctx)
 }

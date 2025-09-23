@@ -59,3 +59,12 @@ generate-local-clickhouse-migrations:
 	  cat <(echo -e "-- DO NOT EDIT: This file was generated with: just generate-local-clickhouse-migrations\n") $OUTDIR/$filename.tmp_1 > $OUTDIR/$filename
 	  rm $OUTDIR/$filename.tmp*
 	done
+
+clickhouse-up:
+    docker compose up -d clickhouse
+
+clikchouse-down:
+    docker compose stop clickhouse
+
+clikchouse-rm:
+    docker compose rm clickhouse

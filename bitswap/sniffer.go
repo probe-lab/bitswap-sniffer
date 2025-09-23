@@ -14,6 +14,7 @@ import (
 	"github.com/ipfs/boxo/bitswap/network/httpnet"
 	"github.com/ipfs/boxo/blockstore"
 	"github.com/ipfs/go-cid"
+	leveldb "github.com/ipfs/go-ds-leveldb"
 	kaddht "github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -25,7 +26,6 @@ import (
 	routingdisc "github.com/libp2p/go-libp2p/p2p/discovery/routing"
 
 	"github.com/ipfs/go-datastore"
-	dsync "github.com/ipfs/go-datastore/sync"
 	mh "github.com/multiformats/go-multihash"
 )
 
@@ -34,11 +34,15 @@ type Sniffer struct {
 	log    *logrus.Logger
 
 	// cid comsumer-related
-	cidCache *lru.Cache[string, struct{}]
-	cidC     chan []SharedCid
-	db       *ClickhouseDB
+	cidCache            *lru.Cache[string, struct{}]
+	cidC                chan []SharedCid
+	cidConsumerDone     chan struct{}
+	bitswapAppealerDone chan struct{}
+	db                  *ClickhouseDB
 
 	// services
+	ds        *leveldb.Datastore
+	bs        blockstore.Blockstore
 	bitswap   *bitswap.Bitswap
 	dhtCli    *kaddht.IpfsDHT
 	discovery *Discovery
@@ -47,13 +51,24 @@ type Sniffer struct {
 	cidCount          metric.Int64Counter
 	uniqueCidCount    metric.Int64Counter
 	bitswapStatsCount metric.Int64Counter
+	bitswapWantList   metric.Int64Gauge
 	bitswapPeerCount  metric.Int64Gauge
+	diskUsageGauge    metric.Float64Gauge
 }
 
 func NewSniffer(ctx context.Context, config *SnifferConfig, dhtCli *kaddht.IpfsDHT, db *ClickhouseDB) (*Sniffer, error) {
 	log := config.Logger
 	cidC := make(chan []SharedCid)
-	ds := dsync.MutexWrap(datastore.NewMapDatastore())
+
+	// create a leveldb-datastore
+	ds, err := leveldb.NewDatastore(config.LevelDB, nil)
+	if err != nil {
+		return nil, fmt.Errorf("leveldb datastore: %w", err)
+	}
+	log.Infoln("Deleting old datastore...")
+	if err := ds.Delete(ctx, datastore.NewKey("/")); err != nil {
+		log.WithError(err).Warnln("Couldn't delete old datastore")
+	}
 	bs := blockstore.NewBlockstore(ds)
 	bs = blockstore.NewIdStore(bs)
 
@@ -61,8 +76,10 @@ func NewSniffer(ctx context.Context, config *SnifferConfig, dhtCli *kaddht.IpfsD
 	bitswapLibp2p := bsnet.NewFromIpfsHost(dhtCli.Host())
 	bitswapHTTP := httpnet.New(
 		dhtCli.Host(),
-		httpnet.WithHTTPWorkers(1),
+		httpnet.WithHTTPWorkers(5),
 		httpnet.WithUserAgent("probelab-sniffer"),
+		httpnet.WithIdleConnTimeout(1*time.Hour),
+		httpnet.WithMaxIdleConns(500),
 	)
 	bitswapNetworks := network.New(dhtCli.Host().Peerstore(), bitswapLibp2p, bitswapHTTP)
 
@@ -91,13 +108,16 @@ func NewSniffer(ctx context.Context, config *SnifferConfig, dhtCli *kaddht.IpfsD
 		bs,
 		bitswap.WithTracer(tracer),
 		bitswap.WithServerEnabled(true),
+		bitswap.SetSendDontHaves(true),
 	)
 
 	discv, err := NewDiscovery(
 		dhtCli,
+		bitswapNetworks,
 		log,
 		&DiscoveryConfig{
-			Interval: 15 * time.Second,
+			Interval:  config.DiscoveryInterval,
+			Telemetry: config.Telemetry,
 		},
 	)
 	if err != nil {
@@ -109,26 +129,64 @@ func NewSniffer(ctx context.Context, config *SnifferConfig, dhtCli *kaddht.IpfsD
 		return nil, err
 	}
 	return &Sniffer{
-		log:       log,
-		config:    config,
-		cidCache:  cidCache,
-		cidC:      cidC,
-		bitswap:   bsServic,
-		dhtCli:    dhtCli,
-		db:        db,
-		discovery: discv,
+		log:                 log,
+		config:              config,
+		cidCache:            cidCache,
+		cidC:                cidC,
+		cidConsumerDone:     make(chan struct{}),
+		bitswapAppealerDone: make(chan struct{}),
+		ds:                  ds,
+		bs:                  bs,
+		bitswap:             bsServic,
+		dhtCli:              dhtCli,
+		db:                  db,
+		discovery:           discv,
 	}, nil
 }
 
 func (s *Sniffer) Serve(ctx context.Context) error {
 	// ensure that we close everything before leaving
 	defer func() {
-		// close db connections
-		s.db.Close()
+		var err error
+		// close bitswap
+		err = s.bitswap.Close()
+		if err != nil {
+			s.log.Errorf("closing bitswap: %s", err.Error())
+		}
+
+		// close discovery
+		err = s.dhtCli.Close()
+		if err != nil {
+			s.log.Errorf("closing dht client: %s", err.Error())
+		}
+
+		// close host
+		err = s.dhtCli.Host().Close()
+		if err != nil {
+			s.log.Errorf("closing libp2p host: %s", err.Error())
+		}
+
+		// close datastore
+		err = s.ds.Close()
+		if err != nil {
+			s.log.Errorf("closing datastore: %s", err.Error())
+		}
+
+		// close the cid consumer
+		<-s.cidConsumerDone
+		<-s.bitswapAppealerDone
+
+		// close db
+		err = s.db.Close()
+		if err != nil {
+			s.log.Errorf("closing db: %s", err.Error())
+		}
+
 	}()
 
 	go s.discovery.Serve(ctx)
 	go s.cidConsumer(ctx)
+	go s.measureDiskUsage(ctx)
 
 	err := s.makeSnifferAppealing(ctx)
 	if err != nil {
@@ -166,7 +224,7 @@ func (s *Sniffer) Serve(ctx context.Context) error {
 					attribute.String("type", "received"),
 				),
 			)
-			s.bitswapStatsCount.Add(
+			s.bitswapWantList.Record(
 				ctx,
 				int64(len(stats.Wantlist)),
 				metric.WithAttributes(
@@ -204,7 +262,7 @@ func (s *Sniffer) Init(ctx context.Context) error {
 		return err
 	}
 
-	return s.initMetrics(ctx)
+	return s.initMetrics()
 }
 
 func (s *Sniffer) makeSnifferAppealing(ctx context.Context) error {
@@ -233,6 +291,7 @@ func (s *Sniffer) makeSnifferAppealing(ctx context.Context) error {
 		for {
 			select {
 			case <-ctx.Done():
+				close(s.bitswapAppealerDone)
 				return
 			case <-time.After(15 * time.Second):
 				s.log.WithField("cid", randCid.String()).Info("Bitswap appealer: pretending to fetch cid from bitswap...")
@@ -269,13 +328,13 @@ func (s *Sniffer) cidConsumer(ctx context.Context) {
 				s.cidCache.Add(sCid.Cid, struct{}{})
 				cids = append(cids, sCid)
 				s.uniqueCidCount.Add(ctx, int64(1))
-
 			}
 			if len(cids) > 0 {
 				s.db.PersistCidBatch(ctx, cids)
 			}
 
 		case <-ctx.Done():
+			close(s.cidConsumerDone)
 			return
 		}
 	}
@@ -350,7 +409,7 @@ func getLibp2pHostInfo(h host.Host, pID peer.ID) map[string]any {
 	return attrs
 }
 
-func (s *Sniffer) initMetrics(ctx context.Context) error {
+func (s *Sniffer) initMetrics() error {
 	var err error
 	meter := s.config.Telemetry.Meter("sniffer")
 
@@ -368,8 +427,15 @@ func (s *Sniffer) initMetrics(ctx context.Context) error {
 	}
 	s.bitswapPeerCount, err = meter.Int64Gauge("bitswap_peer_count", metric.WithDescription("Number of peers connected at the Bitswap level"))
 	if err != nil {
-		return fmt.Errorf("bitswap peer count gauge: %w", err)
+		return fmt.Errorf("bitswap peer gauge: %w", err)
 	}
-
+	s.bitswapWantList, err = meter.Int64Gauge("bitswap_want_list", metric.WithDescription("Number of CIDs in our want-list"))
+	if err != nil {
+		return fmt.Errorf("bitswap want-list gauge %w", err)
+	}
+	s.diskUsageGauge, err = meter.Float64Gauge("datastore_disk_usage", metric.WithDescription("Disk usage of bitswap's datastore"))
+	if err != nil {
+		return fmt.Errorf("datastore disk usage gauge %w", err)
+	}
 	return nil
 }

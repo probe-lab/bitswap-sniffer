@@ -21,10 +21,12 @@ import (
 )
 
 type SnifferConfig struct {
-	Libp2pHost  string
-	Libp2pPort  int
-	DialTimeout time.Duration
-	CacheSize   int
+	Libp2pHost        string
+	Libp2pPort        int
+	DialTimeout       time.Duration
+	CacheSize         int
+	LevelDB           string
+	DiscoveryInterval time.Duration
 
 	Logger    *logrus.Logger
 	Telemetry metric.MeterProvider
@@ -44,6 +46,12 @@ func (c *SnifferConfig) Validate() error {
 	}
 	if c.CacheSize <= 0 {
 		return fmt.Errorf("invalid cache size: %d", c.CacheSize)
+	}
+	if c.DiscoveryInterval == time.Duration(0) {
+		return fmt.Errorf("invalid discovery interval: %s", c.DiscoveryInterval)
+	}
+	if len(c.LevelDB) == 0 {
+		return fmt.Errorf("invalid level-db path: %s", c.LevelDB)
 	}
 
 	// extra services related stuff
@@ -94,12 +102,12 @@ func (c *SnifferConfig) Libp2pOptions() ([]libp2p.Option, error) {
 
 func (c *SnifferConfig) DHTClientOptions() ([]kaddht.Option, error) {
 	return []kaddht.Option{
-		kaddht.Mode(kaddht.ModeClient),
+		kaddht.Mode(kaddht.ModeServer),
 		kaddht.BootstrapPeers(kaddht.GetDefaultBootstrapPeerAddrInfos()...),
 	}, nil
 }
 
-func (c *SnifferConfig) CreateDHTClient(ctx context.Context) (*kaddht.IpfsDHT, error) {
+func (c *SnifferConfig) CreateDHTServer(ctx context.Context) (*kaddht.IpfsDHT, error) {
 	// generate the libp2p host
 	hostOptions, err := c.Libp2pOptions()
 	if err != nil {

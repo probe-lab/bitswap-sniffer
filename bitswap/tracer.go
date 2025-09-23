@@ -34,45 +34,81 @@ func (t *CidStreamTracer) MessageSent(pid peer.ID, bmsg bsmsg.BitSwapMessage) {
 }
 
 func (t *CidStreamTracer) streamCid(direction string, pid peer.ID, bmsg bsmsg.BitSwapMessage) {
+	if bmsg.Empty() {
+		return
+	}
 	timestamp := time.Now()
-	sharedCids := make([]SharedCid, 0)
 
-	wantList := bmsg.Wantlist()
-	haveList := bmsg.Haves()
-	dontHaveList := bmsg.DontHaves()
-	blockList := bmsg.Blocks()
+	sharedCids := make([]SharedCid, len(bmsg.Wantlist())+len(bmsg.Haves())+len(bmsg.DontHaves())+len(bmsg.Blocks()))
+	producerStr := t.producer.String()
 
-	wantCids := make([]string, len(wantList))
-	for i, wMsg := range wantList {
+	wantCids := make([]string, len(bmsg.Wantlist()))
+	for i, wMsg := range bmsg.Wantlist() {
 		wantCids[i] = wMsg.Cid.String()
-		sharedCids = append(sharedCids, SharedCid{timestamp, direction, wMsg.Cid.String(), t.producer.String(), pid.String(), "want"})
+		sharedCids = append(
+			sharedCids,
+			SharedCid{
+				Timestamp: timestamp,
+				Direction: direction,
+				Cid:       wMsg.Cid.String(),
+				Producer:  producerStr,
+				Type:      "want",
+			},
+		)
 	}
 
-	haveCids := make([]string, len(haveList))
-	for i, hMsg := range haveCids {
-		haveCids[i] = string(hMsg)
-		sharedCids = append(sharedCids, SharedCid{timestamp, direction, string(hMsg), t.producer.String(), pid.String(), "have"})
+	haveCids := make([]string, len(bmsg.Haves()))
+	for i, hMsg := range bmsg.Haves() {
+		haveCids[i] = hMsg.String()
+		sharedCids = append(
+			sharedCids,
+			SharedCid{
+				Timestamp: timestamp,
+				Direction: direction,
+				Cid:       hMsg.String(),
+				Producer:  producerStr,
+				Type:      "have",
+			},
+		)
 	}
 
-	dontHaveCids := make([]string, len(dontHaveList))
-	for i, dhMsg := range dontHaveCids {
-		dontHaveCids[i] = string(dhMsg)
-		sharedCids = append(sharedCids, SharedCid{timestamp, direction, string(dhMsg), t.producer.String(), pid.String(), "dont-have"})
+	dontHaveCids := make([]string, len(bmsg.DontHaves()))
+	for i, dhMsg := range bmsg.DontHaves() {
+		dontHaveCids[i] = dhMsg.String()
+		sharedCids = append(
+			sharedCids,
+			SharedCid{
+				Timestamp: timestamp,
+				Direction: direction,
+				Cid:       dhMsg.String(),
+				Producer:  producerStr,
+				Type:      "dont-have",
+			},
+		)
 	}
 
-	blockCids := make([]string, len(blockList))
-	for i, bMsg := range blockList {
+	blockCids := make([]string, len(bmsg.Blocks()))
+	for i, bMsg := range bmsg.Blocks() {
 		blockCids[i] = bMsg.Cid().String()
-		sharedCids = append(sharedCids, SharedCid{timestamp, direction, bMsg.Cid().String(), t.producer.String(), pid.String(), "block"})
+		sharedCids = append(
+			sharedCids,
+			SharedCid{
+				Timestamp: timestamp,
+				Direction: direction,
+				Cid:       bMsg.String(),
+				Producer:  producerStr,
+				Type:      "block",
+			},
+		)
 	}
 
 	t.log.WithFields(logrus.Fields{
 		"peer":      pid.String(),
 		"direction": direction,
-		"want":      len(wantList),
-		"have":      len(haveList),
-		"dont-have": len(dontHaveList),
-		"blocks":    len(blockList),
+		"want":      len(bmsg.Wantlist()),
+		"have":      len(bmsg.Haves()),
+		"dont-have": len(bmsg.DontHaves()),
+		"blocks":    len(bmsg.Blocks()),
 	}).Debug("more cids tracked")
 
 	t.cidC <- sharedCids
