@@ -30,6 +30,9 @@ lint:
 	{{GOCC}} run honnef.co/go/tools/cmd/staticcheck@latest ./...
 	{{GOCC}} test -race -buildvcs -vet=off ./...
 
+test:
+    go test ./bitswap/...
+
 docker:
 	docker build -t probe-lab/bitswap-sniffer:latest -t probe-lab/bitswap-sniffer-{{COMMIT}} -t {{REPO_SERVER}}/probelab:bitswap-sniffer-{{COMMIT}} .
 
