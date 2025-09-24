@@ -48,12 +48,12 @@ type Sniffer struct {
 	discovery *Discovery
 
 	// metrics
-	cidCount          metric.Int64Counter
-	uniqueCidCount    metric.Int64Counter
-	bitswapStatsCount metric.Int64Counter
-	bitswapWantList   metric.Int64Gauge
-	bitswapPeerCount  metric.Int64Gauge
-	diskUsageGauge    metric.Float64Gauge
+	cidCount             metric.Int64Counter
+	uniqueCidCount       metric.Int64Counter
+	bitswapStatsGauge    metric.Int64Gauge
+	bitswapWantListGauge metric.Int64Gauge
+	bitswapPeerGauge     metric.Int64Gauge
+	diskUsageGauge       metric.Float64Gauge
 }
 
 func NewSniffer(ctx context.Context, config *SnifferConfig, dhtCli *kaddht.IpfsDHT, db *ClickhouseDB) (*Sniffer, error) {
@@ -209,22 +209,22 @@ func (s *Sniffer) Serve(ctx context.Context) error {
 				"msg-sent":     stats.DataSent,
 			}).Info("bitswap stats...")
 
-			s.bitswapPeerCount.Record(ctx, int64(len(stats.Peers)))
-			s.bitswapStatsCount.Add(
+			s.bitswapPeerGauge.Record(ctx, int64(len(stats.Peers)))
+			s.bitswapStatsGauge.Record(
 				ctx,
 				int64(stats.MessagesReceived),
 				metric.WithAttributes(
 					attribute.String("type", "sent"),
 				),
 			)
-			s.bitswapStatsCount.Add(
+			s.bitswapStatsGauge.Record(
 				ctx,
 				int64(stats.DataSent),
 				metric.WithAttributes(
 					attribute.String("type", "received"),
 				),
 			)
-			s.bitswapWantList.Record(
+			s.bitswapWantListGauge.Record(
 				ctx,
 				int64(len(stats.Wantlist)),
 				metric.WithAttributes(
@@ -421,15 +421,15 @@ func (s *Sniffer) initMetrics() error {
 	if err != nil {
 		return fmt.Errorf("unique seen cids counter: %w", err)
 	}
-	s.bitswapStatsCount, err = meter.Int64Counter("bitswap_stats", metric.WithDescription("Bitswap stats for sent and received msgs"))
+	s.bitswapStatsGauge, err = meter.Int64Gauge("bitswap_stats", metric.WithDescription("Bitswap stats for sent and received msgs"))
 	if err != nil {
 		return fmt.Errorf("bitswap stats histogram: %w", err)
 	}
-	s.bitswapPeerCount, err = meter.Int64Gauge("bitswap_peer_count", metric.WithDescription("Number of peers connected at the Bitswap level"))
+	s.bitswapPeerGauge, err = meter.Int64Gauge("bitswap_peer_count", metric.WithDescription("Number of peers connected at the Bitswap level"))
 	if err != nil {
 		return fmt.Errorf("bitswap peer gauge: %w", err)
 	}
-	s.bitswapWantList, err = meter.Int64Gauge("bitswap_want_list", metric.WithDescription("Number of CIDs in our want-list"))
+	s.bitswapWantListGauge, err = meter.Int64Gauge("bitswap_want_list", metric.WithDescription("Number of CIDs in our want-list"))
 	if err != nil {
 		return fmt.Errorf("bitswap want-list gauge %w", err)
 	}
