@@ -6,11 +6,12 @@ import (
 	"net"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/network"
+	"github.com/libp2p/go-libp2p/p2p/net/connmgr"
 	"github.com/sirupsen/logrus"
 	"go.opentelemetry.io/otel/metric"
 
 	libp2p "github.com/libp2p/go-libp2p"
-	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	quic "github.com/libp2p/go-libp2p/p2p/transport/quic"
@@ -77,13 +78,11 @@ func (c *SnifferConfig) Libp2pOptions() ([]libp2p.Option, error) {
 		c.Logger.Error(err)
 		return nil, err
 	}
-	mAddrs = append(mAddrs, tcpAddr, quicAddr)
 
-	// resource manager
-	limiter := rcmgr.NewFixedLimiter(rcmgr.InfiniteLimits)
-	rm, err := rcmgr.NewResourceManager(limiter)
+	mAddrs = append(mAddrs, tcpAddr, quicAddr)
+	cm, err := connmgr.NewConnManager(500, 2_000)
 	if err != nil {
-		c.Logger.Errorf("new resource manager: %v", err)
+		c.Logger.Error(err)
 		return nil, err
 	}
 
@@ -92,7 +91,8 @@ func (c *SnifferConfig) Libp2pOptions() ([]libp2p.Option, error) {
 		libp2p.ListenAddrs(mAddrs...),
 		libp2p.Security(noise.ID, noise.New),
 		libp2p.UserAgent("probelab-sniffer"),
-		libp2p.ResourceManager(rm),
+		libp2p.ResourceManager(&network.NullResourceManager{}),
+		libp2p.ConnectionManager(cm),
 		libp2p.DisableRelay(),
 		libp2p.Transport(tcp.NewTCPTransport),
 		libp2p.Transport(quic.NewTransport),
