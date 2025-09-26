@@ -24,6 +24,8 @@ import (
 type SnifferConfig struct {
 	Libp2pHost        string
 	Libp2pPort        int
+	ConnectionsLow    int
+	ConnectionsHigh   int
 	DialTimeout       time.Duration
 	CacheSize         int
 	LevelDB           string
@@ -80,7 +82,7 @@ func (c *SnifferConfig) Libp2pOptions() ([]libp2p.Option, error) {
 	}
 
 	mAddrs = append(mAddrs, tcpAddr, quicAddr)
-	cm, err := connmgr.NewConnManager(500, 2_000)
+	cm, err := connmgr.NewConnManager(c.ConnectionsLow, c.ConnectionsHigh)
 	if err != nil {
 		c.Logger.Error(err)
 		return nil, err

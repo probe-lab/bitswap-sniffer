@@ -27,6 +27,8 @@ var runConfig = struct {
 	ChCluster         string
 	ChMigrationEngine string
 	ChSecure          bool
+	ConnectionsLow    int
+	ConnectionsHigh   int
 }{
 	Libp2pHost:        "127.0.0.1",
 	Libp2pPort:        9020,
@@ -44,6 +46,8 @@ var runConfig = struct {
 	ChCluster:         "",
 	ChMigrationEngine: "TinyLog",
 	ChSecure:          false,
+	ConnectionsLow:    1_000,
+	ConnectionsHigh:   8_000,
 }
 
 var cmdRun = &cli.Command{
@@ -167,6 +171,20 @@ var runFlags = []cli.Flag{
 		Destination: &runConfig.ChMigrationEngine,
 		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_CH_ENGINE"),
 	},
+	&cli.IntFlag{
+		Name:        "connections.low",
+		Usage:       "The low water mark for the connection manager.",
+		Value:       runConfig.ConnectionsLow,
+		Destination: &runConfig.ConnectionsLow,
+		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_CONNECTIONS_LOW"),
+	},
+	&cli.IntFlag{
+		Name:        "connections.high",
+		Usage:       "The high water mark for the connection manager.",
+		Value:       runConfig.ConnectionsHigh,
+		Destination: &runConfig.ConnectionsHigh,
+		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_CONNECTIONS_HIGH"),
+	},
 }
 
 func scanAction(ctx context.Context, cmd *cli.Command) error {
@@ -192,6 +210,8 @@ func scanAction(ctx context.Context, cmd *cli.Command) error {
 	snifferConfig := &bitswap.SnifferConfig{
 		Libp2pHost:        runConfig.Libp2pHost,
 		Libp2pPort:        runConfig.Libp2pPort,
+		ConnectionsLow:    runConfig.ConnectionsLow,
+		ConnectionsHigh:   runConfig.ConnectionsHigh,
 		DialTimeout:       runConfig.ConnectionTimeout,
 		DiscoveryInterval: runConfig.DiscoveryInterval,
 		CacheSize:         runConfig.CacheSize,
