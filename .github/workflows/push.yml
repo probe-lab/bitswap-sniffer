@@ -61,14 +61,14 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Building parsec Image Metadata
+      - name: Building Bitswap Sniffer Image Metadata
         id: meta
         run: |
           SHA_SHORT=${{ github.sha }}
           SHA_SHORT=${SHA_SHORT::7}
 
           NAMESPACE=${{ steps.login-ecr.outputs.registry }}
-          TAG="parsec-sha${SHA_SHORT}"
+          TAG="bitswap-sniffer-${SHA_SHORT}"
 
           IMAGE="$NAMESPACE/$AWS_ECR_REPOSITORY:$TAG"
 
