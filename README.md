@@ -1,6 +1,10 @@
 # Bitswap Sniffer
 
-The `bitswap-sniffer` is a tool that, as it name describes, sniffs CIDs in the IPFS network using the Bitswap protocol. The tool attempts to connect to as many peers as possible, listening and then listing CIDs requested through IWANT messages by remote nodes.
+[![ProbeLab](https://img.shields.io/badge/made%20by-ProbeLab-blue.svg)](https://probelab.io)
+[![Build status](https://img.shields.io/github/actions/workflow/status/probe-lab/bitswap-sniffer/go-test.yml?branch=main)](https://github.com/probe-lab/bitswap-sniffer/actions)
+[![Docker Image](https://img.shields.io/github/actions/workflow/status/probe-lab/bitswap-sniffer/push.yml?branch=main)](https://github.com/probe-lab/bitswap-sniffer/actions)
+
+The `bitswap-sniffer` is a tool that, as its name describes, sniffs CIDs in the IPFS network using the Bitswap protocol. The tool attempts to connect to as many peers as possible, listening and then listing CIDs requested through IWANT messages by remote nodes.
 
 ## Requirements
 - `Go >=1.24`
@@ -53,7 +57,7 @@ OPTIONS:
    --connection.timeout duration  Timeout for the connection attempt to the node (default: 15s) [$BITSWAP_SNIFFER_RUN_CONNECTION_TIMEOUT]
    --cache.size int               Size for the CID cache (default: 65536) [$BITSWAP_SNIFFER_RUN_CACHE_SIZE]
    --ds.path string               Path to the LevelDB datastore (default: "./ds") [$BITSWAP_SNIFFER_RUN_LEVEL_DB]
-   --discovery.interval duration  Interval between dht peer discovery lookups (default: 1m0s) [$BITSWAP_SNIFFER_RUN_DISCOVERY_INTERVAL]
+   --discovery.interval duration  Interval between DHT peer discovery lookups (default: 1m0s) [$BITSWAP_SNIFFER_RUN_DISCOVERY_INTERVAL]
    --batcher.size int             Maximum number of items that will be cached before persisting into the DB (default: 1024) [$BITSWAP_SNIFFER_RUN_BATCHER_SIZE]
    --ch.flushers int              Number of go-routines that will be flushing cids into the DB (default: 5) [$BITSWAP_SNIFFER_RUN_CH_FLUSHERS]
    --ch.driver string             Driver of the Database that will keep all the raw data (local, replicated) (default: "local") [$BITSWAP_SNIFFER_RUN_CH_DRIVER]
@@ -62,7 +66,7 @@ OPTIONS:
    --ch.password string           Password for the user of the given Database (default: "password") [$BITSWAP_SNIFFER_RUN_CH_PASSWORD]
    --ch.database string           Name of the Database that will keep all the raw data (default: "bitswap_sniffer_ipfs") [$BITSWAP_SNIFFER_RUN_CH_DATABASE]
    --ch.cluster string            Name of the Cluster that will keep all the raw data [$BITSWAP_SNIFFER_RUN_CH_CLUSTER]
-   --ch.secure                    Whether we use or not use of TLS while connecting clickhouse (default: false) [$BITSWAP_SNIFFER_RUN_CH_SECURE]
+   --ch.secure                    Whether we use or not use TLS while connecting clickhouse (default: false) [$BITSWAP_SNIFFER_RUN_CH_SECURE]
    --ch.engine string             CH engine that will be used for the migrations (default: "TinyLog") [$BITSWAP_SNIFFER_RUN_CH_ENGINE]
    --connections.low int          The low water mark for the connection manager. (default: 1000) [$BITSWAP_SNIFFER_RUN_CONNECTIONS_LOW]
    --connections.high int         The high water mark for the connection manager. (default: 8000) [$BITSWAP_SNIFFER_RUN_CONNECTIONS_HIGH]
@@ -77,7 +81,7 @@ GLOBAL OPTIONS:
 
 Example of how to use it:
 ```bash
-# easy run with just and it's default values
+# easy run with just its default values
 just run
 ```
 
