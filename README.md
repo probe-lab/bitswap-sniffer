@@ -1,7 +1,7 @@
 # Bitswap Sniffer
 
 [![ProbeLab](https://img.shields.io/badge/made%20by-ProbeLab-blue.svg)](https://probelab.io)
-[![Build status](https://img.shields.io/github/actions/workflow/status/probe-lab/bitswap-sniffer/go-test.yml?branch=main)](https://github.com/probe-lab/bitswap-sniffer/actions)
+[![Build status](https://img.shields.io/github/actions/workflow/status/probe-lab/bitswap-sniffer/go-check.yml?branch=main)](https://github.com/probe-lab/bitswap-sniffer/actions)
 [![Docker Image](https://img.shields.io/github/actions/workflow/status/probe-lab/bitswap-sniffer/push.yml?branch=main)](https://github.com/probe-lab/bitswap-sniffer/actions)
 
 The `bitswap-sniffer` is a tool that, as its name describes, sniffs CIDs in the IPFS network using the Bitswap protocol. The tool attempts to connect to as many peers as possible, listening and then listing CIDs requested through IWANT messages by remote nodes.
