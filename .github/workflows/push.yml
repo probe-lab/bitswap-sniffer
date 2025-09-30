@@ -93,3 +93,63 @@ jobs:
         id: push
         if: steps.check-ecr.outputs.exit_code != 0
         run: just docker-push
+
+  deploy-to-ecs:
+    if: github.event_name == 'push' || github.event.inputs.deploy_to_ecs == 'true'
+    needs: [push_to_ecr]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checking out code
+        uses: actions/checkout@v4
+        with:
+          lfs: "true"
+
+      - name: Configuring AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Downloading latest Amazon ECS task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition ${{ env.ECS_TASK_DEF }} \
+            --query taskDefinition > task-definition.json
+
+      # https://github.com/aws-actions/amazon-ecs-deploy-task-definition/issues/176
+      # This isn't critical but just avoids some warning messages in the next step
+      - name: Removing invalid ${{ inputs.service }} task definition fields
+        run: |
+          cat task-definition.json | jq -r 'del(
+            .taskDefinitionArn,
+            .requiresAttributes,
+            .compatibilities,
+            .revision,
+            .status,
+            .registeredAt,
+            .registeredBy
+          )' > task-definition-cleaned.json
+
+      - name: Updating Amazon ECS task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition-cleaned.json
+          container-name: prod-use1-cmi-bitsniffer
+          image: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ needs.push_to_ecr.outputs.image_tag }}
+          environment-variables: |
+            STATIC_FILES_VERSION=${{ needs.push_to_ecr.outputs.short_sha }}
+
+      - name: Deploy Amazon ECS task definition
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+          wait-for-minutes: 10
+          propagate-tags: SERVICE
+          enable-ecs-managed-tags: true
