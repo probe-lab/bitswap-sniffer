@@ -25,7 +25,6 @@ import (
 	rpqm "github.com/ipfs/boxo/routing/providerquerymanager"
 	routingdisc "github.com/libp2p/go-libp2p/p2p/discovery/routing"
 
-	"github.com/ipfs/go-datastore"
 	mh "github.com/multiformats/go-multihash"
 )
 
@@ -56,19 +55,15 @@ type Sniffer struct {
 	diskUsageGauge       metric.Float64Gauge
 }
 
-func NewSniffer(ctx context.Context, config *SnifferConfig, dhtCli *kaddht.IpfsDHT, db *ClickhouseDB) (*Sniffer, error) {
+func NewSniffer(
+	ctx context.Context,
+	config *SnifferConfig,
+	dhtCli *kaddht.IpfsDHT,
+	ds *leveldb.Datastore,
+	db *ClickhouseDB) (*Sniffer, error) {
 	log := config.Logger
 	cidC := make(chan []SharedCid)
 
-	// create a leveldb-datastore
-	ds, err := leveldb.NewDatastore(config.LevelDB, nil)
-	if err != nil {
-		return nil, fmt.Errorf("leveldb datastore: %w", err)
-	}
-	log.Infoln("Deleting old datastore...")
-	if err := ds.Delete(ctx, datastore.NewKey("/")); err != nil {
-		log.WithError(err).Warnln("Couldn't delete old datastore")
-	}
 	bs := blockstore.NewBlockstore(ds)
 	bs = blockstore.NewIdStore(bs)
 

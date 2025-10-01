@@ -224,7 +224,12 @@ func scanAction(ctx context.Context, cmd *cli.Command) error {
 		return errors.Wrap(err, "validating conf")
 	}
 
-	dhtCli, err := snifferConfig.CreateDHTServer(ctx)
+	ds, err := snifferConfig.CreateDatastore(ctx)
+	if err != nil {
+		return errors.Wrap(err, "creating leveldb datastore")
+	}
+
+	dhtCli, err := snifferConfig.CreateDHTServer(ctx, ds)
 	if err != nil {
 		return errors.Wrap(err, "creating dht server")
 	}
@@ -248,7 +253,7 @@ func scanAction(ctx context.Context, cmd *cli.Command) error {
 
 	}
 
-	sniffer, err := bitswap.NewSniffer(ctx, snifferConfig, dhtCli, chCli)
+	sniffer, err := bitswap.NewSniffer(ctx, snifferConfig, dhtCli, ds, chCli)
 	if err != nil {
 		return errors.Wrap(err, "creating bitswap sniffer")
 	}

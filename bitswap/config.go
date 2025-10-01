@@ -4,11 +4,15 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
 	"time"
 
+	"github.com/ipfs/go-datastore"
+	leveldb "github.com/ipfs/go-ds-leveldb"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/p2p/net/connmgr"
 	"github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	"go.opentelemetry.io/otel/metric"
 
 	libp2p "github.com/libp2p/go-libp2p"
@@ -109,7 +113,22 @@ func (c *SnifferConfig) DHTClientOptions() ([]kaddht.Option, error) {
 	}, nil
 }
 
-func (c *SnifferConfig) CreateDHTServer(ctx context.Context) (*kaddht.IpfsDHT, error) {
+func (c *SnifferConfig) CreateDatastore(ctx context.Context) (*leveldb.Datastore, error) {
+	// create a leveldb-datastore
+	_ = os.Mkdir(c.LevelDB, 0777) // create the folder and ignore if there was an issue
+	ds, err := leveldb.NewDatastore(c.LevelDB, nil)
+	if err != nil {
+		return nil, err
+	}
+	// We don't store the priv key of the host, thus, delete any existing files
+	c.Logger.Info("Deleting old datastore...")
+	if err := ds.Delete(ctx, datastore.NewKey("/")); err != nil {
+		log.WithError(err).Warnln("Couldn't delete old datastore")
+	}
+	return ds, nil
+}
+
+func (c *SnifferConfig) CreateDHTServer(ctx context.Context, ds *leveldb.Datastore) (*kaddht.IpfsDHT, error) {
 	// generate the libp2p host
 	hostOptions, err := c.Libp2pOptions()
 	if err != nil {
@@ -125,6 +144,9 @@ func (c *SnifferConfig) CreateDHTServer(ctx context.Context) (*kaddht.IpfsDHT, e
 	dhtOptions, err := c.DHTClientOptions()
 	if err != nil {
 		return nil, err
+	}
+	if ds != nil {
+		dhtOptions = append(dhtOptions, kaddht.Datastore(ds))
 	}
 	dhtCli, err := kaddht.New(ctx, h, dhtOptions...)
 	if err != nil {
