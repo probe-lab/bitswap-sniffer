@@ -1,4 +1,4 @@
-name: Push docker image
+name: CI/CD Pipeline
 
 on:
   workflow_dispatch:
@@ -7,13 +7,18 @@ on:
         type: string
         description: "Which ref should be checked out?"
   push:
-    branches:
-      - main
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 env:
-  AWS_REGION: us-east-1
   AWS_ROLE: arn:aws:iam::019120760881:role/prod-use1-github-oidc-role
-  AWS_ECR_REPOSITORY: probelab
+  ECR_REGISTRY: 019120760881.dkr.ecr.us-east-1.amazonaws.com
+  ECR_REPOSITORY: probelab
+  AWS_REGION: us-east-1
+  ECS_CLUSTER: prod-use1-cmi-ecs-cluster
+  ECS_SERVICE: prod-use1-cmi-bitsniffer
+  ECS_TASK_DEF: prod-use1-cmi-bitsniffer-task
 
 permissions:
   id-token: write
@@ -40,15 +45,27 @@ jobs:
       - name: Running tests
         run: just test
 
-  push_to_ecr:
-    name: Push Docker image to ProbeLab's ECR
+  build-and-push:
+    name: Build Docker image and push to ProbeLab's ERC
+    needs: [test]
     runs-on: ubuntu-latest
-    needs: test
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      image_tag: ${{ steps.vars.outputs.image_tag }}
+      short_sha: ${{ steps.vars.outputs.short_sha }}
     steps:
       - name: Checking out the Repository
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref }}
+
+      - name: Getting short SHA for commit
+        id: vars
+        run: |
+          echo "short_sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "image_tag=bitswap-sniffer-$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
       - name: Configuring AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -61,42 +78,30 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Building Bitswap Sniffer Image Metadata
-        id: meta
+      - name: Checking if image exists
+        id: check_image
         run: |
-          SHA_SHORT=${{ github.sha }}
-          SHA_SHORT=${SHA_SHORT::7}
+          if aws ecr describe-images --repository-name $ECR_REPOSITORY --image-ids imageTag=${{ steps.vars.outputs.image_tag }} --region $AWS_REGION > /dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Image with tag ${{ steps.vars.outputs.image_tag }} already exists, skipping build"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Image with tag ${{ steps.vars.outputs.image_tag }} does not exist, will build"
+          fi
 
-          NAMESPACE=${{ steps.login-ecr.outputs.registry }}
-          TAG="bitswap-sniffer-${SHA_SHORT}"
-
-          IMAGE="$NAMESPACE/$AWS_ECR_REPOSITORY:$TAG"
-
-          echo "tag=$TAG" >> $GITHUB_OUTPUT
-          echo "image=$IMAGE" >> $GITHUB_OUTPUT
-
-      - name: Checking if Image exists in ECR
-        id: check-ecr
+      - name: Build Docker image
+        if: steps.check_image.outputs.exists == 'false'
         run: |
-          aws ecr describe-images --repository-name $AWS_ECR_REPOSITORY --image-ids imageTag=${{ steps.meta.outputs.tag }} || exit_code=$?
-          echo "exit_code=$exit_code" >> $GITHUB_OUTPUT
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.vars.outputs.image_tag }} .
 
-      - name: Setting up just
-        uses: extractions/setup-just@v3
-
-      - name: Building Docker Image ${{ steps.meta.outputs.tag }}
-        id: build
-        if: steps.check-ecr.outputs.exit_code != 0
-        run: just docker
-
-      - name: Pushing Docker Image ${{ steps.meta.outputs.tag }} to Amazon ECR
-        id: push
-        if: steps.check-ecr.outputs.exit_code != 0
-        run: just docker-push
+      - name: Push to ECR
+        if: steps.check_image.outputs.exists == 'false'
+        run: |
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.vars.outputs.image_tag }}
 
   deploy-to-ecs:
     if: github.event_name == 'push' || github.event.inputs.deploy_to_ecs == 'true'
-    needs: [push_to_ecr]
+    needs: [build-and-push]
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -110,7 +115,7 @@ jobs:
       - name: Configuring AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          role-to-assume: ${{ env.AWS_ROLE }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Downloading latest Amazon ECS task definition
@@ -138,10 +143,8 @@ jobs:
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
           task-definition: task-definition-cleaned.json
-          container-name: prod-use1-cmi-bitsniffer
-          image: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ needs.push_to_ecr.outputs.image_tag }}
-          environment-variables: |
-            STATIC_FILES_VERSION=${{ needs.push_to_ecr.outputs.short_sha }}
+          container-name: prod-use1-cmi-bitsniffer-bitsniffer
+          image: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ needs.build-and-push.outputs.image_tag }}
 
       - name: Deploy Amazon ECS task definition
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
