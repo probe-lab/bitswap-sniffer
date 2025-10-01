@@ -12,7 +12,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/p2p/net/connmgr"
 	"github.com/sirupsen/logrus"
-	log "github.com/sirupsen/logrus"
 	"go.opentelemetry.io/otel/metric"
 
 	libp2p "github.com/libp2p/go-libp2p"
@@ -123,7 +122,7 @@ func (c *SnifferConfig) CreateDatastore(ctx context.Context) (*leveldb.Datastore
 	// We don't store the priv key of the host, thus, delete any existing files
 	c.Logger.Info("Deleting old datastore...")
 	if err := ds.Delete(ctx, datastore.NewKey("/")); err != nil {
-		log.WithError(err).Warnln("Couldn't delete old datastore")
+		c.Logger.WithError(err).Warnln("Couldn't delete old datastore")
 	}
 	return ds, nil
 }
