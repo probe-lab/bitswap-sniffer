@@ -33,8 +33,8 @@ var runConfig = struct {
 	Libp2pHost:        "127.0.0.1",
 	Libp2pPort:        9020,
 	ConnectionTimeout: 15 * time.Second,
-	CacheSize:         65_536, // arbitrary number
-	BatcherSize:       1_024,  // arbitrary number
+	CacheSize:         0,     // arbitrary number
+	BatcherSize:       1_024, // arbitrary number
 	Flushers:          5,
 	LevelDB:           "./ds",
 	DiscoveryInterval: 1 * time.Minute,

@@ -39,7 +39,7 @@ func (t *CidStreamTracer) streamCid(direction string, pid peer.ID, bmsg bsmsg.Bi
 	}
 	timestamp := time.Now()
 
-	sharedCids := make([]SharedCid, len(bmsg.Wantlist())+len(bmsg.Haves())+len(bmsg.DontHaves())+len(bmsg.Blocks()))
+	sharedCids := make([]SharedCid, 0, len(bmsg.Wantlist())+len(bmsg.Haves())+len(bmsg.DontHaves())+len(bmsg.Blocks()))
 	producerStr := t.producer.String()
 
 	wantCids := make([]string, len(bmsg.Wantlist()))

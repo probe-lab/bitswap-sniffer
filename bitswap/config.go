@@ -50,9 +50,6 @@ func (c *SnifferConfig) Validate() error {
 	if c.DialTimeout == time.Duration(0) {
 		return fmt.Errorf("invlaid dial timeout: %s", c.DialTimeout)
 	}
-	if c.CacheSize <= 0 {
-		return fmt.Errorf("invalid cache size: %d", c.CacheSize)
-	}
 	if c.DiscoveryInterval == time.Duration(0) {
 		return fmt.Errorf("invalid discovery interval: %s", c.DiscoveryInterval)
 	}

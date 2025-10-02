@@ -119,9 +119,12 @@ func NewSniffer(
 		return nil, err
 	}
 
-	cidCache, err := lru.New[string, struct{}](config.CacheSize)
-	if err != nil {
-		return nil, err
+	var cidCache *lru.Cache[string, struct{}]
+	if config.CacheSize > 0 {
+		cidCache, err = lru.New[string, struct{}](config.CacheSize)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return &Sniffer{
 		log:                 log,
@@ -316,11 +319,13 @@ func (s *Sniffer) cidConsumer(ctx context.Context) {
 						attribute.String("msg_type", sCid.Type),
 					),
 				)
-				present := s.cidCache.Contains(sCid.Cid)
-				if present {
-					continue
+				if s.cidCache != nil {
+					present := s.cidCache.Contains(sCid.Cid)
+					if present {
+						continue
+					}
+					s.cidCache.Add(sCid.Cid, struct{}{})
 				}
-				s.cidCache.Add(sCid.Cid, struct{}{})
 				cids = append(cids, sCid)
 				s.uniqueCidCount.Add(ctx, int64(1))
 			}
