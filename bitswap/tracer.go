@@ -54,6 +54,7 @@ func (t *CidStreamTracer) streamCid(direction string, pid peer.ID, bmsg bsmsg.Bi
 				Producer:  producerStr,
 				By:        pid.String(),
 				Type:      "want",
+				Origin:    "bitswap",
 			},
 		)
 	}
@@ -70,6 +71,7 @@ func (t *CidStreamTracer) streamCid(direction string, pid peer.ID, bmsg bsmsg.Bi
 				Producer:  producerStr,
 				By:        pid.String(),
 				Type:      "have",
+				Origin:    "bitswap",
 			},
 		)
 	}
@@ -86,6 +88,7 @@ func (t *CidStreamTracer) streamCid(direction string, pid peer.ID, bmsg bsmsg.Bi
 				Producer:  producerStr,
 				By:        pid.String(),
 				Type:      "dont-have",
+				Origin:    "bitswap",
 			},
 		)
 	}
@@ -102,6 +105,7 @@ func (t *CidStreamTracer) streamCid(direction string, pid peer.ID, bmsg bsmsg.Bi
 				Producer:  producerStr,
 				By:        pid.String(),
 				Type:      "block",
+				Origin:    "bitswap",
 			},
 		)
 	}
@@ -113,6 +117,7 @@ func (t *CidStreamTracer) streamCid(direction string, pid peer.ID, bmsg bsmsg.Bi
 		"have":      len(bmsg.Haves()),
 		"dont-have": len(bmsg.DontHaves()),
 		"blocks":    len(bmsg.Blocks()),
+		"origin":    "bitswap",
 	}).Debug("more cids tracked")
 
 	t.cidC <- sharedCids

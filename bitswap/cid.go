@@ -25,6 +25,8 @@ type SharedCid struct {
 	By string `ch:"peer_id" json:"peer_id"`
 	// Want/Have/DontHave
 	Type string `ch:"msg_type" json:"msg_type"`
+	// Origin of the message bitswap/dht (simpler filter)
+	Origin string `ch:"origin" json:"origin"`
 }
 
 func PrepareSharedCidsBatch(ctx context.Context, db driver.Conn, cids []SharedCid) (driver.Batch, error) {
