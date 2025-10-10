@@ -342,6 +342,7 @@ func (s *Sniffer) cidConsumer(ctx context.Context) {
 					1,
 					metric.WithAttributes(
 						attribute.String("direction", sCid.Direction),
+						attribute.String("origin", sCid.Origin),
 						attribute.String("msg_type", sCid.Type),
 					),
 				)
