@@ -130,41 +130,69 @@ func (t *CidTracer) streamCid(direction string, pid peer.ID, bmsg bsmsg.BitSwapM
 }
 
 func (t *CidTracer) dhtRequestTracer(ctx context.Context, s network.Stream, req *dht_pb.Message) {
-	// we are only interested into the PutProviders message, as we know that they reference to valid CIDs
-	if req.Type != dht_pb.Message_ADD_PROVIDER {
+	// unwrap the record and get the cid
+	providerId := s.Conn().RemotePeer()
+
+	var sharedCid SharedCid
+	var cid cid.Cid
+	var err error
+
+	// we are only interested into the AddProviders or GetProviders messages
+	switch req.Type {
+	case dht_pb.Message_ADD_PROVIDER:
+		cid, err = handleAddProvider(providerId, req)
+		if err != nil {
+			t.log.WithFields(logrus.Fields{
+				"key":         string(req.Key),
+				"remote-peer": providerId.String(),
+			}).Errorf("dht: unable to extract the cid from given key - %s", err.Error())
+			return
+		}
+		sharedCid = SharedCid{
+			Timestamp: time.Now(),
+			Direction: "received",
+			Cid:       cid.String(),
+			Producer:  t.producer.String(),
+			By:        providerId.String(),
+			Type:      "add-provider-records",
+			Origin:    "dht",
+		}
+
+	case dht_pb.Message_GET_PROVIDERS:
+		cid, err = handleAddProvider(providerId, req)
+		if err != nil {
+			t.log.WithFields(logrus.Fields{
+				"key":         string(req.Key),
+				"remote-peer": providerId.String(),
+			}).Errorf("dht: unable to extract the cid from given key - %s", err.Error())
+			return
+		}
+		sharedCid = SharedCid{
+			Timestamp: time.Now(),
+			Direction: "received",
+			Cid:       cid.String(),
+			Producer:  t.producer.String(),
+			By:        providerId.String(),
+			Type:      "get-provider-records",
+			Origin:    "dht",
+		}
+
+	default:
 		t.log.WithField("type", dht_pb.Message_MessageType_name[int32(req.Type)]).Trace("dropping not relevant dht message...")
 		return
 	}
 
-	// unwrap the record and get the cid
-	providerId := s.Conn().RemotePeer()
-	cid, err := handleAddProvider(providerId, req)
-	if err != nil {
-		t.log.WithFields(logrus.Fields{
-			"key":         string(req.Key),
-			"remote-peer": providerId.String(),
-		}).Errorf("dht: unable to extract the cid from given key - %s", err.Error())
-		return
-	}
-
-	sharedCids := make([]SharedCid, 1)
-	sharedCids[0] = SharedCid{
-		Timestamp: time.Now(),
-		Direction: "received",
-		Cid:       cid.String(),
-		Producer:  t.producer.String(),
-		By:        providerId.String(),
-		Type:      "provider-records",
-		Origin:    "dht",
-	}
-
 	t.log.WithFields(logrus.Fields{
 		"peer":      providerId.String(),
+		"key":       sharedCid.Cid,
+		"op":        sharedCid.Type,
 		"direction": "received",
 		"providers": len(req.ProviderPeers),
 		"origin":    "dht",
 	}).Debug("more cids tracked from the DHT server")
 
+	sharedCids := make([]SharedCid, 1)
+	sharedCids[0] = sharedCid
 	t.cidC <- sharedCids
 }
 
