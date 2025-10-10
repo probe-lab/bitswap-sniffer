@@ -229,11 +229,6 @@ func scanAction(ctx context.Context, cmd *cli.Command) error {
 		return errors.Wrap(err, "creating leveldb datastore")
 	}
 
-	dhtCli, err := snifferConfig.CreateDHTServer(ctx, ds)
-	if err != nil {
-		return errors.Wrap(err, "creating dht server")
-	}
-
 	conDetails := &bitswap.ChConfig{
 		Driver:          runConfig.ChDriver,
 		Host:            runConfig.ChHost,
@@ -253,7 +248,7 @@ func scanAction(ctx context.Context, cmd *cli.Command) error {
 
 	}
 
-	sniffer, err := bitswap.NewSniffer(ctx, snifferConfig, dhtCli, ds, chCli)
+	sniffer, err := bitswap.NewSniffer(ctx, snifferConfig, ds, chCli)
 	if err != nil {
 		return errors.Wrap(err, "creating bitswap sniffer")
 	}

@@ -1,39 +1,45 @@
 package bitswap
 
 import (
+	"context"
+	"fmt"
 	"time"
 
 	bsmsg "github.com/ipfs/boxo/bitswap/message"
 	"github.com/ipfs/boxo/bitswap/tracer"
+	"github.com/ipfs/go-cid"
+	dht_pb "github.com/libp2p/go-libp2p-kad-dht/pb"
+	"github.com/libp2p/go-libp2p/core/network"
 	peer "github.com/libp2p/go-libp2p/core/peer"
+	"github.com/multiformats/go-multihash"
 	"github.com/sirupsen/logrus"
 )
 
-type CidStreamTracer struct {
+type CidTracer struct {
 	log      *logrus.Logger
 	producer peer.ID
 	cidC     chan []SharedCid
 }
 
-var _ tracer.Tracer = &CidStreamTracer{}
+var _ tracer.Tracer = &CidTracer{}
 
-func NewStreamTracer(log *logrus.Logger, producerID peer.ID, cidC chan []SharedCid) (*CidStreamTracer, error) {
-	return &CidStreamTracer{
+func NewCidTracer(log *logrus.Logger, producerID peer.ID, cidC chan []SharedCid) (*CidTracer, error) {
+	return &CidTracer{
 		log:      log,
 		producer: producerID,
 		cidC:     cidC,
 	}, nil
 }
 
-func (t *CidStreamTracer) MessageReceived(pid peer.ID, bmsg bsmsg.BitSwapMessage) {
+func (t *CidTracer) MessageReceived(pid peer.ID, bmsg bsmsg.BitSwapMessage) {
 	t.streamCid("received", pid, bmsg)
 }
 
-func (t *CidStreamTracer) MessageSent(pid peer.ID, bmsg bsmsg.BitSwapMessage) {
+func (t *CidTracer) MessageSent(pid peer.ID, bmsg bsmsg.BitSwapMessage) {
 	t.streamCid("sent", pid, bmsg)
 }
 
-func (t *CidStreamTracer) streamCid(direction string, pid peer.ID, bmsg bsmsg.BitSwapMessage) {
+func (t *CidTracer) streamCid(direction string, pid peer.ID, bmsg bsmsg.BitSwapMessage) {
 	if bmsg.Empty() {
 		return
 	}
@@ -54,6 +60,7 @@ func (t *CidStreamTracer) streamCid(direction string, pid peer.ID, bmsg bsmsg.Bi
 				Producer:  producerStr,
 				By:        pid.String(),
 				Type:      "want",
+				Origin:    "bitswap",
 			},
 		)
 	}
@@ -70,6 +77,7 @@ func (t *CidStreamTracer) streamCid(direction string, pid peer.ID, bmsg bsmsg.Bi
 				Producer:  producerStr,
 				By:        pid.String(),
 				Type:      "have",
+				Origin:    "bitswap",
 			},
 		)
 	}
@@ -86,6 +94,7 @@ func (t *CidStreamTracer) streamCid(direction string, pid peer.ID, bmsg bsmsg.Bi
 				Producer:  producerStr,
 				By:        pid.String(),
 				Type:      "dont-have",
+				Origin:    "bitswap",
 			},
 		)
 	}
@@ -102,6 +111,7 @@ func (t *CidStreamTracer) streamCid(direction string, pid peer.ID, bmsg bsmsg.Bi
 				Producer:  producerStr,
 				By:        pid.String(),
 				Type:      "block",
+				Origin:    "bitswap",
 			},
 		)
 	}
@@ -113,7 +123,84 @@ func (t *CidStreamTracer) streamCid(direction string, pid peer.ID, bmsg bsmsg.Bi
 		"have":      len(bmsg.Haves()),
 		"dont-have": len(bmsg.DontHaves()),
 		"blocks":    len(bmsg.Blocks()),
-	}).Debug("more cids tracked")
+		"origin":    "bitswap",
+	}).Debug("more cids tracked from bitswap")
 
 	t.cidC <- sharedCids
+}
+
+func (t *CidTracer) dhtRequestTracer(ctx context.Context, s network.Stream, req *dht_pb.Message) {
+	// we are only interested into the PutProviders message, as we know that they reference to valid CIDs
+	if req.Type != dht_pb.Message_ADD_PROVIDER {
+		t.log.WithField("type", dht_pb.Message_MessageType_name[int32(req.Type)]).Trace("dropping not relevant dht message...")
+		return
+	}
+
+	// unwrap the record and get the cid
+	providerId := s.Conn().RemotePeer()
+	cid, err := handleAddProvider(providerId, req)
+	if err != nil {
+		t.log.WithFields(logrus.Fields{
+			"key":         string(req.Key),
+			"remote-peer": providerId.String(),
+		}).Errorf("dht: unable to extract the cid from given key - %s", err.Error())
+		return
+	}
+
+	sharedCids := make([]SharedCid, 1)
+	sharedCids[0] = SharedCid{
+		Timestamp: time.Now(),
+		Direction: "received",
+		Cid:       cid.String(),
+		Producer:  t.producer.String(),
+		By:        providerId.String(),
+		Type:      "provider-records",
+		Origin:    "dht",
+	}
+
+	t.log.WithFields(logrus.Fields{
+		"peer":      providerId.String(),
+		"direction": "received",
+		"providers": len(req.ProviderPeers),
+		"origin":    "dht",
+	}).Debug("more cids tracked from the DHT server")
+
+	t.cidC <- sharedCids
+}
+
+func handleAddProvider(p peer.ID, pmes *dht_pb.Message) (cid.Cid, error) {
+	key := pmes.GetKey()
+	if len(key) > 80 {
+		return cid.Cid{}, fmt.Errorf("provider_records: key size too large")
+	} else if len(key) == 0 {
+		return cid.Cid{}, fmt.Errorf("provider_records: key is empty")
+	}
+
+	pinfos := dht_pb.PBPeersToPeerInfos(pmes.GetProviderPeers())
+	success := false
+	for _, pi := range pinfos {
+		if pi.ID != p {
+			continue
+		}
+		if len(pi.Addrs) < 1 {
+			continue
+		}
+		success = true
+	}
+	if !success {
+		return cid.Cid{}, fmt.Errorf("provider_record: no valid provider")
+	}
+
+	// conver key to multihash
+	keyMH, err := multihash.Cast(key)
+	if err != nil {
+		return cid.Cid{}, fmt.Errorf("provider_record: no valid multihash for key - %s", err.Error())
+	}
+	decodedKeyMH, err := multihash.Decode(key)
+	if err != nil {
+		return cid.Cid{}, fmt.Errorf("provider_record: no valid decoded multihash for key - %s", err.Error())
+	}
+
+	// conver the key into a CID
+	return cid.NewCidV1(decodedKeyMH.Code, keyMH), nil
 }
