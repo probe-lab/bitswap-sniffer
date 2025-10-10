@@ -123,30 +123,3 @@ func (c *SnifferConfig) CreateDatastore(ctx context.Context) (*leveldb.Datastore
 	}
 	return ds, nil
 }
-
-func (c *SnifferConfig) CreateDHTServer(ctx context.Context, ds *leveldb.Datastore) (*kaddht.IpfsDHT, error) {
-	// generate the libp2p host
-	hostOptions, err := c.Libp2pOptions()
-	if err != nil {
-		return nil, err
-	}
-	h, err := libp2p.New(hostOptions...)
-	if err != nil {
-		return nil, err
-	}
-
-	// init the dht host
-	// DHT routing
-	dhtOptions, err := c.DHTClientOptions()
-	if err != nil {
-		return nil, err
-	}
-	if ds != nil {
-		dhtOptions = append(dhtOptions, kaddht.Datastore(ds))
-	}
-	dhtCli, err := kaddht.New(ctx, h, dhtOptions...)
-	if err != nil {
-		return nil, err
-	}
-	return dhtCli, nil
-}

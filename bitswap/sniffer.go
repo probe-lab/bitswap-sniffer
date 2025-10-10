@@ -15,6 +15,7 @@ import (
 	"github.com/ipfs/boxo/blockstore"
 	"github.com/ipfs/go-cid"
 	leveldb "github.com/ipfs/go-ds-leveldb"
+	libp2p "github.com/libp2p/go-libp2p"
 	kaddht "github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -58,14 +59,45 @@ type Sniffer struct {
 func NewSniffer(
 	ctx context.Context,
 	config *SnifferConfig,
-	dhtCli *kaddht.IpfsDHT,
 	ds *leveldb.Datastore,
 	db *ClickhouseDB) (*Sniffer, error) {
+
 	log := config.Logger
 	cidC := make(chan []SharedCid)
 
 	bs := blockstore.NewBlockstore(ds)
 	bs = blockstore.NewIdStore(bs)
+
+	// create the dht-server
+	// generate the libp2p host
+	hostOptions, err := config.Libp2pOptions()
+	if err != nil {
+		return nil, err
+	}
+	h, err := libp2p.New(hostOptions...)
+	if err != nil {
+		return nil, err
+	}
+
+	// init the dht host
+	cidTracer, err := NewCidTracer(log, h.ID(), cidC)
+	if err != nil {
+		return nil, err
+	}
+
+	// DHT routing
+	dhtOptions, err := config.DHTClientOptions()
+	if err != nil {
+		return nil, err
+	}
+	dhtOptions = append(dhtOptions, kaddht.OnRequestHook(cidTracer.dhtRequestTracer))
+	if ds != nil {
+		dhtOptions = append(dhtOptions, kaddht.Datastore(ds))
+	}
+	dhtCli, err := kaddht.New(ctx, h, dhtOptions...)
+	if err != nil {
+		return nil, err
+	}
 
 	// configure reqs for bitswap client
 	bitswapLibp2p := bsnet.NewFromIpfsHost(dhtCli.Host())
@@ -89,19 +121,13 @@ func NewSniffer(
 		return nil, err
 	}
 
-	// custom tracer to stream all cids
-	tracer, err := NewStreamTracer(log, dhtCli.Host().ID(), cidC)
-	if err != nil {
-		return nil, err
-	}
-
 	// create the bitswap server
 	bsServic := bitswap.New(
 		ctx,
 		bitswapNetworks,
 		providerQueryMgr,
 		bs,
-		bitswap.WithTracer(tracer),
+		bitswap.WithTracer(cidTracer),
 		bitswap.WithServerEnabled(true),
 		bitswap.SetSendDontHaves(true),
 	)
