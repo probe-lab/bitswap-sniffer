@@ -159,7 +159,7 @@ func (t *CidTracer) dhtRequestTracer(ctx context.Context, s network.Stream, req 
 		}
 
 	case dht_pb.Message_GET_PROVIDERS:
-		cid, err = handleAddProvider(providerId, req)
+		cid, err = handleGetProvider(req)
 		if err != nil {
 			t.log.WithFields(logrus.Fields{
 				"key":         string(req.Key),
@@ -217,6 +217,28 @@ func handleAddProvider(p peer.ID, pmes *dht_pb.Message) (cid.Cid, error) {
 	}
 	if !success {
 		return cid.Cid{}, fmt.Errorf("provider_record: no valid provider")
+	}
+
+	// conver key to multihash
+	keyMH, err := multihash.Cast(key)
+	if err != nil {
+		return cid.Cid{}, fmt.Errorf("provider_record: no valid multihash for key - %s", err.Error())
+	}
+	decodedKeyMH, err := multihash.Decode(key)
+	if err != nil {
+		return cid.Cid{}, fmt.Errorf("provider_record: no valid decoded multihash for key - %s", err.Error())
+	}
+
+	// conver the key into a CID
+	return cid.NewCidV1(decodedKeyMH.Code, keyMH), nil
+}
+
+func handleGetProvider(pmes *dht_pb.Message) (cid.Cid, error) {
+	key := pmes.GetKey()
+	if len(key) > 80 {
+		return cid.Cid{}, fmt.Errorf("provider_records: key size too large")
+	} else if len(key) == 0 {
+		return cid.Cid{}, fmt.Errorf("provider_records: key is empty")
 	}
 
 	// conver key to multihash

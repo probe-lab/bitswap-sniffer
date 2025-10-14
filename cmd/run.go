@@ -6,6 +6,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/probe-lab/bitswap-sniffer/bitswap"
+	"github.com/probe-lab/go-commons/db"
 	"github.com/sirupsen/logrus"
 	cli "github.com/urfave/cli/v3"
 )
@@ -21,6 +22,7 @@ var runConfig = struct {
 	DiscoveryInterval time.Duration
 	ChDriver          string
 	ChHost            string
+	ChPort            int
 	ChUser            string
 	ChPassword        string
 	ChDatabase        string
@@ -39,7 +41,8 @@ var runConfig = struct {
 	LevelDB:           "./ds",
 	DiscoveryInterval: 1 * time.Minute,
 	ChDriver:          "local",
-	ChHost:            "127.0.0.1:9000",
+	ChHost:            "127.0.0.1",
+	ChPort:            9000,
 	ChUser:            "username",
 	ChPassword:        "password",
 	ChDatabase:        "bitswap_sniffer_ipfs",
@@ -124,10 +127,17 @@ var runFlags = []cli.Flag{
 	},
 	&cli.StringFlag{
 		Name:        "ch.host",
-		Usage:       "Address of the Database that will keep all the raw data <ip:port>",
+		Usage:       "IP of the Database",
 		Value:       runConfig.ChHost,
 		Destination: &runConfig.ChHost,
 		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_CH_HOST"),
+	},
+	&cli.IntFlag{
+		Name:        "ch.port",
+		Usage:       "Port of the Database",
+		Value:       runConfig.ChPort,
+		Destination: &runConfig.ChPort,
+		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_CH_PORT"),
 	},
 	&cli.StringFlag{
 		Name:        "ch.user",
@@ -200,6 +210,7 @@ func scanAction(ctx context.Context, cmd *cli.Command) error {
 		"ch-flushers":        runConfig.Flushers,
 		"ch-driver":          runConfig.ChDriver,
 		"ch-host":            runConfig.ChHost,
+		"ch-port":            runConfig.ChPort,
 		"ch-user":            runConfig.ChUser,
 		"ch-database":        runConfig.ChDatabase,
 		"ch-cluster":         runConfig.ChCluster,
@@ -230,17 +241,25 @@ func scanAction(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	conDetails := &bitswap.ChConfig{
-		Driver:          runConfig.ChDriver,
-		Host:            runConfig.ChHost,
-		User:            runConfig.ChUser,
-		Password:        runConfig.ChPassword,
-		Database:        runConfig.ChDatabase,
-		Cluster:         runConfig.ChCluster,
-		MigrationEngine: runConfig.ChMigrationEngine,
-		Secure:          runConfig.ChSecure,
-		BatchSize:       runConfig.BatcherSize,
-		Flushers:        runConfig.Flushers,
-		Telemetry:       rootConfig.MetricsProvider,
+		ClickHouseConfig: db.ClickHouseConfig{
+			BaseConfig: &db.ClickHouseBaseConfig{
+				Host: runConfig.ChHost,
+				Port: runConfig.ChPort,
+				User: runConfig.ChUser,
+				Pass: runConfig.ChPassword,
+				SSL:  runConfig.ChSecure,
+			},
+			Database: runConfig.ChDatabase,
+		},
+		ClickHouseMigrationsConfig: db.ClickHouseMigrationsConfig{
+			ClusterName:            runConfig.ChCluster,
+			MigrationsTableEngine:  runConfig.ChMigrationEngine,
+			MultiStatementEnabled:  false,
+			ReplicatedTableEngines: runConfig.ChDriver == "replicated",
+		},
+		BatchSize: runConfig.BatcherSize,
+		Flushers:  runConfig.Flushers,
+		Telemetry: rootConfig.MetricsProvider,
 	}
 	chCli, err := bitswap.NewClickhouseDB(conDetails, log)
 	if err != nil {
