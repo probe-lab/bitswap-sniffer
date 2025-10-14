@@ -2,19 +2,14 @@ package bitswap
 
 import (
 	"context"
-	"crypto/tls"
 	"embed"
 	"fmt"
-	"os"
 	"sync"
 	"time"
 
-	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
-	"github.com/golang-migrate/migrate/v4"
-	mch "github.com/golang-migrate/migrate/v4/database/clickhouse"
-	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/pkg/errors"
+	"github.com/probe-lab/go-commons/db"
 	"github.com/sirupsen/logrus"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -23,39 +18,23 @@ import (
 const (
 	ClickhouseLocalDriver      string = "local"
 	ClickhouseReplicatedDriver string = "replicated"
+	MaxFlushInterval                  = 5 * time.Second
 )
 
+//go:embed migrations
+var clickhouseMigrations embed.FS
+
 type ChConfig struct {
-	Driver          string
-	Host            string
-	User            string
-	Password        string
-	Database        string
-	Secure          bool
-	BatchSize       int
-	Flushers        int
-	Cluster         string
-	MigrationEngine string
-	Telemetry       metric.MeterProvider
+	db.ClickHouseConfig
+	db.ClickHouseMigrationsConfig
+	BatchSize int
+	Flushers  int
+	Telemetry metric.MeterProvider
 }
 
-func (c *ChConfig) Options() *clickhouse.Options {
-	opts := &clickhouse.Options{
-		Addr: []string{c.Host},
-		Auth: clickhouse.Auth{
-			Database: c.Database,
-			Username: c.User,
-			Password: c.Password,
-		},
-	}
-	if c.Secure {
-		opts.TLS = &tls.Config{}
-	}
-
-	return opts
+func (c *ChConfig) Validate() error {
+	return c.ClickHouseConfig.BaseConfig.Validate()
 }
-
-var MaxFlushInterval = 5 * time.Second
 
 type ClickhouseDB struct {
 	config *ChConfig
@@ -87,28 +66,21 @@ func NewClickhouseDB(config *ChConfig, log *logrus.Logger) (*ClickhouseDB, error
 func (db *ClickhouseDB) Init(ctx context.Context) error {
 	opCtx, opCancel := context.WithTimeout(ctx, 15*time.Second)
 	defer opCancel()
-	err := db.openConnection(opCtx)
+
+	var err error
+	db.conn, err = db.config.OpenAndPing(opCtx)
 	if err != nil {
 		return errors.Wrap(err, "connecting clickhouse db")
 	}
 
-	err = db.ensureMigrations()
+	err = db.config.Apply(db.config.Options(), clickhouseMigrations)
 	if err != nil {
 		return errors.Wrap(err, "making clickhouse migrations")
 	}
 
 	go db.internalFlushingLoop(ctx, db.config.Flushers)
 
-	return db.initMetrics(ctx)
-}
-
-func (db *ClickhouseDB) openConnection(ctx context.Context) (err error) {
-	db.conn, err = clickhouse.Open(db.config.Options())
-	if err != nil {
-		return fmt.Errorf("open clickhouse database: %w", err)
-	}
-
-	return db.conn.Ping(ctx)
+	return db.initMetrics()
 }
 
 func (db *ClickhouseDB) internalFlushingLoop(ctx context.Context, workers int) {
@@ -247,73 +219,7 @@ func (db *ClickhouseDB) Close() error {
 	return db.conn.Close()
 }
 
-//go:embed migrations/replicated
-var clickhouseClusterMigrations embed.FS
-
-//go:embed migrations/local
-var clickhouseLocalMigrations embed.FS
-
-func (db *ClickhouseDB) ensureMigrations() error {
-	db.log.Infof("applying database migrations...")
-
-	tmpDir, err := os.MkdirTemp("", "sniffer")
-	if err != nil {
-		return fmt.Errorf("create tmp directory for migrations: %w", err)
-	}
-	defer func() {
-		err = os.RemoveAll(tmpDir)
-		if err != nil {
-			db.log.WithFields(logrus.Fields{
-				"tmpDir": tmpDir,
-				"error":  err,
-			}).Warn("could not clean up tmp directory")
-		}
-	}()
-	db.log.WithField("dir", tmpDir).Debug("Created temporary directory")
-
-	// point to the rigth migrations folder
-	var migrations embed.FS
-	var path string
-	switch db.config.Driver {
-	case "local":
-		migrations = clickhouseLocalMigrations
-		path = "migrations/" + db.config.Driver
-
-	case "replicated":
-		migrations = clickhouseClusterMigrations
-		path = "migrations/" + db.config.Driver
-	default:
-		return fmt.Errorf("clickhouse doesn't support %s migrations", db.config.Driver)
-	}
-
-	migrationsDir, err := iofs.New(migrations, path)
-	if err != nil {
-		return fmt.Errorf("create iofs migrations source: %w", err)
-	}
-
-	conn := clickhouse.OpenDB(db.config.Options())
-	mdriver, err := mch.WithInstance(conn, &mch.Config{
-		DatabaseName:          db.config.Database,
-		ClusterName:           db.config.Cluster,
-		MigrationsTableEngine: db.config.MigrationEngine,
-	})
-	if err != nil {
-		return fmt.Errorf("create migrate driver: %w", err)
-	}
-
-	m, err := migrate.NewWithInstance("iofs", migrationsDir, db.config.Database, mdriver)
-	if err != nil {
-		return fmt.Errorf("create migrate instance: %w", err)
-	}
-
-	if err = m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
-		return fmt.Errorf("migrate database: %w", err)
-	}
-
-	return nil
-}
-
-func (db *ClickhouseDB) initMetrics(ctx context.Context) error {
+func (db *ClickhouseDB) initMetrics() error {
 	var err error
 	meter := db.config.Telemetry.Meter("clickhouse")
 	db.insertRowCount, err = meter.Int64Counter("inserts", metric.WithDescription("Number of written rows"))
