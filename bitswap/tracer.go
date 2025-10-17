@@ -11,6 +11,7 @@ import (
 	dht_pb "github.com/libp2p/go-libp2p-kad-dht/pb"
 	"github.com/libp2p/go-libp2p/core/network"
 	peer "github.com/libp2p/go-libp2p/core/peer"
+	"github.com/multiformats/go-multicodec"
 	"github.com/multiformats/go-multihash"
 	"github.com/sirupsen/logrus"
 )
@@ -224,13 +225,9 @@ func handleAddProvider(p peer.ID, pmes *dht_pb.Message) (cid.Cid, error) {
 	if err != nil {
 		return cid.Cid{}, fmt.Errorf("provider_record: no valid multihash for key - %s", err.Error())
 	}
-	decodedKeyMH, err := multihash.Decode(key)
-	if err != nil {
-		return cid.Cid{}, fmt.Errorf("provider_record: no valid decoded multihash for key - %s", err.Error())
-	}
 
 	// conver the key into a CID
-	return cid.NewCidV1(decodedKeyMH.Code, keyMH), nil
+	return cid.NewCidV1(uint64(multicodec.Raw), keyMH), nil
 }
 
 func handleGetProvider(pmes *dht_pb.Message) (cid.Cid, error) {
