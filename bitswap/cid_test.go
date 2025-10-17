@@ -16,32 +16,23 @@ import (
 func TestCidQueries(t *testing.T) {
 	chCli := createTestDB(t)
 
-	ctx := context.Background()
-	opCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	err := chCli.Init(ctx)
-	cancel()
+	err := chCli.Init(context.Background())
 	require.NoError(t, err)
 
-	err = dropAllShardeCidTable(ctx, chCli.conn)
-	cancel()
+	err = dropAllShardeCidTable(context.Background(), chCli.conn)
 	require.NoError(t, err)
 
-	cids, batch := createSharedCidsbatch(t, ctx, chCli.conn)
+	cids, batch := createSharedCidsbatch(t, context.Background(), chCli.conn)
 
 	// test the schema of the db
-	opCtx, cancel = context.WithTimeout(ctx, 5*time.Second)
-	ValidateSharedCidsTableSchema(opCtx, chCli.conn)
-	cancel()
+	err = ValidateSharedCidsTableSchema(context.Background(), chCli.conn)
+	require.NoError(t, err)
 
-	opCtx, cancel = context.WithTimeout(ctx, 5*time.Second)
-	chCli.send(opCtx, batch, CidsTableName)
-	cancel()
+	chCli.send(context.Background(), batch, CidsTableName)
 
 	// do the requests
 	// get all the cids
-	opCtx, cancel = context.WithTimeout(ctx, 5*time.Second)
-	respCids, err := RequestCids(opCtx, chCli.conn)
-	cancel()
+	respCids, err := RequestCids(context.Background(), chCli.conn)
 	require.NoError(t, err)
 	require.Equal(t, 3, len(respCids))
 	for i, cid := range respCids {
@@ -55,20 +46,16 @@ func TestCidQueries(t *testing.T) {
 	}
 
 	// get between dates cids
-	opCtx, cancel = context.WithTimeout(ctx, 5*time.Second)
 	respCids, err = RequestCids(
-		opCtx,
+		context.Background(),
 		chCli.conn,
 		WithinDates(time.Now().Add(-23*time.Hour), time.Now()),
 	)
-	cancel()
 	require.NoError(t, err)
 	require.Equal(t, 0, len(respCids))
 
 	// get bitswap cids
-	opCtx, cancel = context.WithTimeout(ctx, 5*time.Second)
-	respCids, err = RequestCids(opCtx, chCli.conn, WithOrigin(OriginBitswap))
-	cancel()
+	respCids, err = RequestCids(context.Background(), chCli.conn, WithOrigin(OriginBitswap))
 	require.NoError(t, err)
 	require.Equal(t, 1, len(respCids))
 	require.Equal(t, cids[0].Timestamp.Unix(), respCids[0].Timestamp.Unix())
@@ -80,9 +67,7 @@ func TestCidQueries(t *testing.T) {
 	require.Equal(t, cids[0].Origin, respCids[0].Origin)
 
 	// get dht cids
-	opCtx, cancel = context.WithTimeout(ctx, 5*time.Second)
-	respCids, err = RequestCids(opCtx, chCli.conn, WithOrigin(OriginDHT))
-	cancel()
+	respCids, err = RequestCids(context.Background(), chCli.conn, WithOrigin(OriginDHT))
 	require.NoError(t, err)
 	require.Equal(t, 2, len(respCids))
 	for i, cid := range respCids {
@@ -96,9 +81,7 @@ func TestCidQueries(t *testing.T) {
 	}
 
 	// get dht add-providers cids
-	opCtx, cancel = context.WithTimeout(ctx, 5*time.Second)
-	respCids, err = RequestCids(opCtx, chCli.conn, WithOrigin(OriginDHT), WithMsgType(DhtAddProviders))
-	cancel()
+	respCids, err = RequestCids(context.Background(), chCli.conn, WithOrigin(OriginDHT), WithMsgType(DhtAddProviders))
 	require.NoError(t, err)
 	require.Equal(t, 1, len(respCids))
 	require.Equal(t, cids[1].Timestamp.Unix(), respCids[0].Timestamp.Unix())
@@ -109,8 +92,7 @@ func TestCidQueries(t *testing.T) {
 	require.Equal(t, cids[1].Type, respCids[0].Type)
 	require.Equal(t, cids[1].Origin, respCids[0].Origin)
 
-	dropAllShardeCidTable(ctx, chCli.conn)
-	cancel()
+	dropAllShardeCidTable(context.Background(), chCli.conn)
 	require.NoError(t, err)
 }
 
@@ -173,11 +155,7 @@ func createSharedCidsbatch(t *testing.T, ctx context.Context, db driver.Conn) ([
 		},
 	}
 
-	opCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	batch, err := PrepareSharedCidsBatch(opCtx, db, cids)
+	batch, err := PrepareSharedCidsBatch(ctx, db, cids)
 	require.NoError(t, err)
-
 	return cids, batch
 }
