@@ -59,8 +59,8 @@ func (t *CidTracer) streamCid(direction string, pid peer.ID, bmsg bsmsg.BitSwapM
 				Cid:       wMsg.Cid.String(),
 				Producer:  producerStr,
 				By:        pid.String(),
-				Type:      "want",
-				Origin:    "bitswap",
+				Type:      BitswapWantType,
+				Origin:    OriginBitswap,
 			},
 		)
 	}
@@ -76,8 +76,8 @@ func (t *CidTracer) streamCid(direction string, pid peer.ID, bmsg bsmsg.BitSwapM
 				Cid:       hMsg.String(),
 				Producer:  producerStr,
 				By:        pid.String(),
-				Type:      "have",
-				Origin:    "bitswap",
+				Type:      BitswapHaveType,
+				Origin:    OriginBitswap,
 			},
 		)
 	}
@@ -93,8 +93,8 @@ func (t *CidTracer) streamCid(direction string, pid peer.ID, bmsg bsmsg.BitSwapM
 				Cid:       dhMsg.String(),
 				Producer:  producerStr,
 				By:        pid.String(),
-				Type:      "dont-have",
-				Origin:    "bitswap",
+				Type:      BitswapDontHaveType,
+				Origin:    OriginBitswap,
 			},
 		)
 	}
@@ -110,8 +110,8 @@ func (t *CidTracer) streamCid(direction string, pid peer.ID, bmsg bsmsg.BitSwapM
 				Cid:       bMsg.String(),
 				Producer:  producerStr,
 				By:        pid.String(),
-				Type:      "block",
-				Origin:    "bitswap",
+				Type:      BitswapBlockType,
+				Origin:    OriginBitswap,
 			},
 		)
 	}
@@ -123,7 +123,7 @@ func (t *CidTracer) streamCid(direction string, pid peer.ID, bmsg bsmsg.BitSwapM
 		"have":      len(bmsg.Haves()),
 		"dont-have": len(bmsg.DontHaves()),
 		"blocks":    len(bmsg.Blocks()),
-		"origin":    "bitswap",
+		"origin":    OriginBitswap,
 	}).Debug("more cids tracked from bitswap")
 
 	t.cidC <- sharedCids
@@ -154,8 +154,8 @@ func (t *CidTracer) dhtRequestTracer(ctx context.Context, s network.Stream, req 
 			Cid:       cid.String(),
 			Producer:  t.producer.String(),
 			By:        providerId.String(),
-			Type:      "add-provider-records",
-			Origin:    "dht",
+			Type:      DhtAddProviders,
+			Origin:    OriginDHT,
 		}
 
 	case dht_pb.Message_GET_PROVIDERS:
@@ -173,8 +173,8 @@ func (t *CidTracer) dhtRequestTracer(ctx context.Context, s network.Stream, req 
 			Cid:       cid.String(),
 			Producer:  t.producer.String(),
 			By:        providerId.String(),
-			Type:      "get-provider-records",
-			Origin:    "dht",
+			Type:      DhtGetProviders,
+			Origin:    OriginDHT,
 		}
 
 	default:
@@ -188,7 +188,7 @@ func (t *CidTracer) dhtRequestTracer(ctx context.Context, s network.Stream, req 
 		"op":        sharedCid.Type,
 		"direction": "received",
 		"providers": len(req.ProviderPeers),
-		"origin":    "dht",
+		"origin":    OriginDHT,
 	}).Debug("more cids tracked from the DHT server")
 
 	sharedCids := make([]SharedCid, 1)

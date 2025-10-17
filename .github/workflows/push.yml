@@ -28,6 +28,19 @@ jobs:
   test:
     name: Testing
     runs-on: ubuntu-latest
+
+    services:
+      clickhouse:
+        image: clickhouse/clickhouse-server
+        env:
+          CLICKHOUSE_DB: "bitswap_sniffer_ipfs"
+          CLICKHOUSE_USER: "username"
+          CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+          CLICKHOUSE_PASSWORD: "password"
+        ports:
+          - "127.0.0.1:8123:8123"
+          - "127.0.0.1:9000:9000"
+
     steps:
       - name: Checking out repository code
         uses: actions/checkout@v4
