@@ -96,11 +96,10 @@ func (db *ClickhouseDB) internalFlushingLoop(ctx context.Context, workers int) {
 			for {
 				select {
 				case cids := <-db.cidC:
-					db.cidBatcher.AddCids(cids)
-					if !db.cidBatcher.IsFull() {
+					persistCids := db.cidBatcher.addCidsAndDrainIfFull(cids)
+					if persistCids == nil {
 						continue
 					}
-					persistCids := db.cidBatcher.Reset()
 
 					opCtx, opCancel := context.WithTimeout(ctx, 5*time.Second)
 					batch, err := PrepareSharedCidsBatch(opCtx, db.conn, persistCids)

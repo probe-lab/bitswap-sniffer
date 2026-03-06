@@ -41,6 +41,20 @@ func (b *cidBatcher) AddCids(cs []SharedCid) {
 	}
 }
 
+// addCidsAndDrainIfFull atomically adds CIDs and drains the batcher if
+// the limit is reached. Returns the drained slice (nil if not full yet).
+func (b *cidBatcher) addCidsAndDrainIfFull(cs []SharedCid) []SharedCid {
+	b.Lock()
+	defer b.Unlock()
+	for _, c := range cs {
+		b.addCid(c)
+	}
+	if !b.isFull() {
+		return nil
+	}
+	return b.reset()
+}
+
 func (b *cidBatcher) addCid(c SharedCid) {
 	b.sharedCids = append(b.sharedCids, c)
 }
