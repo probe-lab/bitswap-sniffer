@@ -44,11 +44,11 @@ func (c *SnifferConfig) Validate() error {
 	if ip == nil {
 		return fmt.Errorf("invalid libp2p-host: %s", c.Libp2pHost)
 	}
-	if c.Libp2pPort <= 0 && c.Libp2pPort > (2^16) {
+	if c.Libp2pPort <= 0 || c.Libp2pPort > 65535 {
 		return fmt.Errorf("invalid libp2p-port: %d", c.Libp2pPort)
 	}
 	if c.DialTimeout == time.Duration(0) {
-		return fmt.Errorf("invlaid dial timeout: %s", c.DialTimeout)
+		return fmt.Errorf("invalid dial timeout: %s", c.DialTimeout)
 	}
 	if c.DiscoveryInterval == time.Duration(0) {
 		return fmt.Errorf("invalid discovery interval: %s", c.DiscoveryInterval)
