@@ -45,7 +45,7 @@ var runConfig = struct {
 	ChPort:            9000,
 	ChUser:            "username",
 	ChPassword:        "password",
-	ChDatabase:        "bitswap_sniffer_ipfs",
+	ChDatabase:        "bitswap_sniffer_db",
 	ChCluster:         "",
 	ChMigrationEngine: "TinyLog",
 	ChSecure:          false,

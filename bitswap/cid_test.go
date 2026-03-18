@@ -126,7 +126,7 @@ func createTestDB(t *testing.T) *ClickhouseDB {
 
 func createSharedCidsbatch(t *testing.T, ctx context.Context, db driver.Conn) ([]SharedCid, driver.Batch) {
 	cids := []SharedCid{
-		SharedCid{
+		{
 			Timestamp: time.Now().Add(-24 * time.Hour).UTC(),
 			Direction: "received",
 			Cid:       "cid_1",
@@ -135,7 +135,7 @@ func createSharedCidsbatch(t *testing.T, ctx context.Context, db driver.Conn) ([
 			Type:      BitswapWantType,
 			Origin:    OriginBitswap,
 		},
-		SharedCid{
+		{
 			Timestamp: time.Now().Add(-24 * time.Hour).UTC(),
 			Direction: "received",
 			Cid:       "cid_2",
@@ -144,7 +144,7 @@ func createSharedCidsbatch(t *testing.T, ctx context.Context, db driver.Conn) ([
 			Type:      DhtAddProviders,
 			Origin:    OriginDHT,
 		},
-		SharedCid{
+		{
 			Timestamp: time.Now().Add(-24 * time.Hour).UTC(),
 			Direction: "received",
 			Cid:       "cid_3",

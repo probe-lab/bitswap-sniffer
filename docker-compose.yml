@@ -5,9 +5,9 @@ services:
     hostname: clickhouse
     network_mode: "host"
     environment:
-      - CLICKHOUSE_DB=${AKAI_CH_DB:-bitswap_sniffer_db}
-      - CLICKHOUSE_USER=${AKAI_CH_USER:-username}
-      - CLICKHOUSE_PASSWORD=${AKAI_CH_PASSWORD:-password}
+      - CLICKHOUSE_DB=${SNIFFER_CH_DB:-bitswap_sniffer_db}
+      - CLICKHOUSE_USER=${SNIFFER_CH_USER:-username}
+      - CLICKHOUSE_PASSWORD=${SNIFFER_CH_PASSWORD:-password}
     ports:
       - "127.0.0.1:${CH_HTTP_PORT:-8123}:8123"
       - "127.0.0.1:${CH_NATIVE_PORT:-9000}:9000"
