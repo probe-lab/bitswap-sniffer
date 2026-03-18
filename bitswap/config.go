@@ -75,7 +75,7 @@ func (c *SnifferConfig) Libp2pOptions() ([]libp2p.Option, error) {
 		c.Logger.Error(err)
 		return nil, err
 	}
-	quicAddr, err := ma.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/%d/quic", c.Libp2pHost, c.Libp2pPort))
+	quicAddr, err := ma.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/%d/quic-v1", c.Libp2pHost, c.Libp2pPort))
 	if err != nil {
 		c.Logger.Error(err)
 		return nil, err
