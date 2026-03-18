@@ -108,7 +108,7 @@ func (t *CidTracer) streamCid(direction string, pid peer.ID, bmsg bsmsg.BitSwapM
 			SharedCid{
 				Timestamp: timestamp,
 				Direction: direction,
-				Cid:       bMsg.String(),
+				Cid:       bMsg.Cid().String(),
 				Producer:  producerStr,
 				By:        pid.String(),
 				Type:      BitswapBlockType,
