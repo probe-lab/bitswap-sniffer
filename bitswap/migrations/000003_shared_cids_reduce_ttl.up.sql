@@ -1,0 +1,1 @@
+ALTER TABLE shared_cids MODIFY TTL timestamp + INTERVAL 30 DAY;
