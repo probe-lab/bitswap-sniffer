@@ -89,7 +89,7 @@ func NewSniffer(
 	if ds != nil {
 		dhtOptions = append(dhtOptions, kaddht.Datastore(ds))
 	}
-	dhtCli, err := kaddht.New(ctx, h, dhtOptions...)
+	dhtCli, err := kaddht.New(h, dhtOptions...)
 	if err != nil {
 		return nil, err
 	}

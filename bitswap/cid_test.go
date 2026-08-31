@@ -111,12 +111,19 @@ func createTestDB(t *testing.T) *ClickhouseDB {
 			MultiStatementEnabled:  false,
 			ReplicatedTableEngines: false,
 		},
-		BatchSize: 1,
+		// Must exceed the fixture count: the batch inserter's manual Flush
+		// only drains up to BatchSize rows per call, so a BatchSize smaller
+		// than the number of rows submitted between Flush calls leaves rows
+		// stranded in the inserter's internal channel.
+		BatchSize: 100,
 		Telemetry: sdkmetrics.NewMeterProvider(),
 	}
 
 	clickhouse, err := NewClickhouseDB(config)
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = clickhouse.Close()
+	})
 	return clickhouse
 }
 

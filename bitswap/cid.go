@@ -146,6 +146,9 @@ func ValidateSharedCidsTableSchema(ctx context.Context, db driver.Conn) error {
 }
 
 func dropAllShardeCidTable(ctx context.Context, con driver.Conn) error {
-	query := fmt.Sprintf(`DELETE FROM %s WHERE 1`, CidsTableName)
+	// DELETE FROM is a ClickHouse lightweight delete: it runs as an async
+	// mutation, so a caller can race the very rows it just cleared.
+	// TRUNCATE is synchronous and empties the table immediately.
+	query := fmt.Sprintf(`TRUNCATE TABLE %s`, CidsTableName)
 	return con.Exec(ctx, query)
 }
