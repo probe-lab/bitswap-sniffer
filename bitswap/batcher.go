@@ -1,10 +1,9 @@
 package bitswap
 
 import (
+	"log/slog"
 	"sync"
 	"time"
-
-	"github.com/sirupsen/logrus"
 )
 
 var DefaultBatchLimit int = 128
@@ -18,7 +17,7 @@ type cidBatcher struct {
 
 func newCidBatcher(limit int) *cidBatcher {
 	if limit <= 0 {
-		logrus.Warnf("no limit was set, setting it to the default %d", limit)
+		slog.Warn("no limit was set, setting it to the default", "limit", limit)
 	}
 	return &cidBatcher{
 		limit:      limit,

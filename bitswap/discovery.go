@@ -5,12 +5,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/ipfs/boxo/bitswap/network"
 	kaddht "github.com/libp2p/go-libp2p-kad-dht"
 
-	"github.com/sirupsen/logrus"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
@@ -22,7 +22,7 @@ type DiscoveryConfig struct {
 
 type Discovery struct {
 	cfg       *DiscoveryConfig
-	log       *logrus.Logger
+	log       *slog.Logger
 	dhtCli    *kaddht.IpfsDHT
 	bsNetwork network.BitSwapNetwork
 
@@ -30,7 +30,7 @@ type Discovery struct {
 	MeterLookups metric.Int64Counter
 }
 
-func NewDiscovery(dhtCli *kaddht.IpfsDHT, bsNet network.BitSwapNetwork, log *logrus.Logger, cfg *DiscoveryConfig) (*Discovery, error) {
+func NewDiscovery(dhtCli *kaddht.IpfsDHT, bsNet network.BitSwapNetwork, log *slog.Logger, cfg *DiscoveryConfig) (*Discovery, error) {
 	log.Info("Initialize Discovery service")
 
 	d := &Discovery{
@@ -49,7 +49,7 @@ func NewDiscovery(dhtCli *kaddht.IpfsDHT, bsNet network.BitSwapNetwork, log *log
 }
 
 func (d *Discovery) Serve(ctx context.Context) (err error) {
-	d.log.WithField("interval", d.cfg.Interval).Info("Starting DHT Discovery Service")
+	d.log.Info("Starting DHT Discovery Service", "interval", d.cfg.Interval)
 	defer d.log.Info("Stopped DHT Discovery Service")
 
 	for {
@@ -61,13 +61,13 @@ func (d *Discovery) Serve(ctx context.Context) (err error) {
 
 		start := time.Now()
 		timeoutCtx, timeoutCancel := context.WithTimeout(ctx, time.Minute)
-		d.log.WithField("key", hex.EncodeToString(k)).Info("DHT discovery: looking up random key")
+		d.log.Info("DHT discovery: looking up random key", "key", hex.EncodeToString(k))
 		peers, err := d.dhtCli.GetClosestPeers(timeoutCtx, string(k))
-		d.log.WithFields(logrus.Fields{
-			"count": len(peers),
-			"err":   err,
-			"took":  time.Since(start).String(),
-		}).Info("DHT discovery: finished lookup")
+		d.log.Info("DHT discovery: finished lookup",
+			"count", len(peers),
+			"err", err,
+			"took", time.Since(start).String(),
+		)
 		timeoutCancel()
 
 		d.MeterLookups.Add(ctx, 1, metric.WithAttributes(attribute.Bool("success", err == nil)))

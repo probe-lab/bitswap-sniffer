@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -19,7 +20,6 @@ import (
 	kaddht "github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/sirupsen/logrus"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
@@ -31,7 +31,7 @@ import (
 
 type Sniffer struct {
 	config *SnifferConfig
-	log    *logrus.Logger
+	log    *slog.Logger
 
 	// cid comsumer-related
 	cidCache            *lru.Cache[string, struct{}]
@@ -68,8 +68,6 @@ func NewSniffer(
 	bs := blockstore.NewBlockstore(ds)
 	bs = blockstore.NewIdStore(bs)
 
-	// create the dht-server
-	// generate the libp2p host
 	hostOptions, err := config.Libp2pOptions()
 	if err != nil {
 		return nil, err
@@ -79,7 +77,6 @@ func NewSniffer(
 		return nil, err
 	}
 
-	// init the dht host
 	cidTracer, err := NewCidTracer(log, h.ID(), cidC)
 	if err != nil {
 		return nil, err
@@ -121,7 +118,6 @@ func NewSniffer(
 		return nil, err
 	}
 
-	// create the bitswap server
 	bsServic := bitswap.New(
 		ctx,
 		bitswapNetworks,
@@ -172,38 +168,32 @@ func (s *Sniffer) Serve(ctx context.Context) error {
 	// ensure that we close everything before leaving
 	defer func() {
 		var err error
-		// close bitswap
 		err = s.bitswap.Close()
 		if err != nil {
-			s.log.Errorf("closing bitswap: %s", err.Error())
+			s.log.Error("closing bitswap", "err", err)
 		}
 
-		// close discovery
 		err = s.dhtCli.Close()
 		if err != nil {
-			s.log.Errorf("closing dht client: %s", err.Error())
+			s.log.Error("closing dht client", "err", err)
 		}
 
-		// close host
 		err = s.dhtCli.Host().Close()
 		if err != nil {
-			s.log.Errorf("closing libp2p host: %s", err.Error())
+			s.log.Error("closing libp2p host", "err", err)
 		}
 
-		// close datastore
 		err = s.ds.Close()
 		if err != nil {
-			s.log.Errorf("closing datastore: %s", err.Error())
+			s.log.Error("closing datastore", "err", err)
 		}
 
-		// close the cid consumer
 		<-s.cidConsumerDone
 		<-s.bitswapAppealerDone
 
-		// close db
 		err = s.db.Close()
 		if err != nil {
-			s.log.Errorf("closing db: %s", err.Error())
+			s.log.Error("closing db", "err", err)
 		}
 
 	}()
@@ -220,18 +210,17 @@ func (s *Sniffer) Serve(ctx context.Context) error {
 	for {
 		select {
 		case <-time.After(10 * time.Second):
-			// list stats
 			stats, err := s.bitswap.Stat()
 			if err != nil {
-				s.log.Warnf("unable to get bitswap server stats, %v", err)
+				s.log.Warn("unable to get bitswap server stats", "err", err)
 				continue
 			}
-			s.log.WithFields(logrus.Fields{
-				"want-list":    len(stats.Wantlist),
-				"peers":        len(stats.Peers),
-				"msg-received": stats.MessagesReceived,
-				"msg-sent":     stats.DataSent,
-			}).Info("bitswap stats...")
+			s.log.Info("bitswap stats...",
+				"want-list", len(stats.Wantlist),
+				"peers", len(stats.Peers),
+				"msg-received", stats.MessagesReceived,
+				"msg-sent", stats.DataSent,
+			)
 
 			s.bitswapPeerGauge.Record(ctx, int64(len(stats.Peers)))
 			s.bitswapStatsGauge.Record(
@@ -269,18 +258,16 @@ func (s *Sniffer) Init(ctx context.Context) error {
 		return err
 	}
 
-	// debug bootnodes
 	for _, bootnode := range succBootnodes {
 		attrs := getLibp2pHostInfo(s.dhtCli.Host(), bootnode)
-		s.log.WithFields(logrus.Fields{
-			"peer_id":           bootnode.String(),
-			"agent_version":     attrs["agent_version"],
-			"protocols":         attrs["protocols"],
-			"protocol_versions": attrs["protocol_versions"],
-		}).Debug("bootnode info")
+		s.log.Debug("bootnode info",
+			"peer_id", bootnode.String(),
+			"agent_version", attrs["agent_version"],
+			"protocols", attrs["protocols"],
+			"protocol_versions", attrs["protocol_versions"],
+		)
 	}
 
-	// init the db
 	err = s.db.Init(ctx)
 	if err != nil {
 		return err
@@ -296,7 +283,6 @@ func (s *Sniffer) makeSnifferAppealing(ctx context.Context) error {
 	content := make([]byte, 1_024)
 	rand.Read(content)
 
-	// configure the type of CID that we want
 	pref := cid.Prefix{
 		Version:  1,
 		Codec:    cid.Raw,
@@ -304,12 +290,11 @@ func (s *Sniffer) makeSnifferAppealing(ctx context.Context) error {
 		MhLength: -1,
 	}
 
-	// get the CID of the content we just generated
 	randCid, err := pref.Sum(content)
 	if err != nil {
 		return err
 	}
-	s.log.WithField("cid", randCid.String()).Info("Bitswap appealer: pretending to fetch cid from bitswap...")
+	s.log.Info("Bitswap appealer: pretending to fetch cid from bitswap...", "cid", randCid.String())
 
 	go func() {
 		for {
@@ -318,11 +303,11 @@ func (s *Sniffer) makeSnifferAppealing(ctx context.Context) error {
 				close(s.bitswapAppealerDone)
 				return
 			case <-time.After(15 * time.Second):
-				s.log.WithField("cid", randCid.String()).Info("Bitswap appealer: pretending to fetch cid from bitswap...")
+				s.log.Info("Bitswap appealer: pretending to fetch cid from bitswap...", "cid", randCid.String())
 				getBlockCtx, cancel := context.WithTimeout(ctx, 1*time.Minute)
 				_, err := s.bitswap.GetBlock(getBlockCtx, randCid)
 				if err != nil {
-					s.log.Warnf("Bitswap appealer: Opps! (as expected) we couldn't find this random CID: %s - %v", randCid.String(), err)
+					s.log.Warn("Bitswap appealer: Opps! (as expected) we couldn't find this random CID", "cid", randCid.String(), "err", err)
 				}
 				cancel()
 			}
@@ -371,7 +356,6 @@ func (s *Sniffer) bootstrapDHT(ctx context.Context, bootstrappers []peer.AddrInf
 	var m sync.Mutex
 	var succBootnodes []peer.ID
 
-	// connect to the bootnodes
 	var wg sync.WaitGroup
 
 	for _, bnode := range bootstrappers {
@@ -380,12 +364,12 @@ func (s *Sniffer) bootstrapDHT(ctx context.Context, bootstrappers []peer.AddrInf
 			defer wg.Done()
 			err := s.dhtCli.Host().Connect(ctx, bn)
 			if err != nil {
-				s.log.Warnf("unable to connect bootstrap node: %s - %s", bn.String(), err.Error())
+				s.log.Warn("unable to connect bootstrap node", "bootnode", bn.String(), "err", err)
 			} else {
 				m.Lock()
 				succBootnodes = append(succBootnodes, bn.ID)
 				m.Unlock()
-				s.log.Debug("successful connection to bootstrap node:", bn.String())
+				s.log.Debug("successful connection to bootstrap node", "bootnode", bn.String())
 			}
 		}(bnode)
 	}
@@ -403,15 +387,15 @@ func (s *Sniffer) bootstrapDHT(ctx context.Context, bootstrappers []peer.AddrInf
 
 	routingSize := s.dhtCli.RoutingTable().Size()
 	if err != nil {
-		s.log.Warnf("unable to bootstrap the dht-node %s", err.Error())
+		s.log.Warn("unable to bootstrap the dht-node", "err", err)
 	}
 	if routingSize == 0 {
 		s.log.Warn("no error, but empty routing table after bootstrapping")
 	}
-	s.log.WithFields(logrus.Fields{
-		"successful-bootnodes": fmt.Sprintf("%d/%d", len(succBootnodes), len(bootstrappers)),
-		"peers_in_routing":     routingSize,
-	}).Info("dht cli bootstrapped")
+	s.log.Info("dht cli bootstrapped",
+		"successful-bootnodes", fmt.Sprintf("%d/%d", len(succBootnodes), len(bootstrappers)),
+		"peers_in_routing", routingSize,
+	)
 	return succBootnodes, nil
 }
 
@@ -419,16 +403,13 @@ func getLibp2pHostInfo(h host.Host, pID peer.ID) map[string]any {
 	time.Sleep(30 * time.Millisecond)
 	attrs := make(map[string]any)
 	// read from the local peerstore
-	// agent version
 	var av any = "unknown"
 	av, _ = h.Peerstore().Get(pID, "AgentVersion")
 	attrs["agent_version"] = av
 
-	// protocols
 	prots, _ := h.Network().Peerstore().GetProtocols(pID)
 	attrs["protocols"] = prots
 
-	// protocol version
 	var pv any = "unknown"
 	pv, _ = h.Peerstore().Get(pID, "ProtocolVersion")
 	attrs["protocol_version"] = pv

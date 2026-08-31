@@ -4,13 +4,13 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/pkg/errors"
 	"github.com/probe-lab/go-commons/db"
-	"github.com/sirupsen/logrus"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
@@ -38,7 +38,7 @@ func (c *ChConfig) Validate() error {
 
 type ClickhouseDB struct {
 	config *ChConfig
-	log    *logrus.Logger
+	log    *slog.Logger
 
 	conn           driver.Conn
 	cidC           chan []SharedCid
@@ -51,7 +51,7 @@ type ClickhouseDB struct {
 	insertLatencyHistogram metric.Int64Histogram
 }
 
-func NewClickhouseDB(config *ChConfig, log *logrus.Logger) (*ClickhouseDB, error) {
+func NewClickhouseDB(config *ChConfig, log *slog.Logger) (*ClickhouseDB, error) {
 	db := &ClickhouseDB{
 		config:         config,
 		log:            log,
@@ -92,7 +92,7 @@ func (db *ClickhouseDB) internalFlushingLoop(ctx context.Context, workers int) {
 		flusherWg.Add(1)
 		go func(wId int) {
 			defer flusherWg.Done()
-			db.log.WithField("worker", wId).Info("new db worker")
+			db.log.Info("new db worker", "worker", wId)
 			for {
 				select {
 				case cids := <-db.cidC:
@@ -104,7 +104,7 @@ func (db *ClickhouseDB) internalFlushingLoop(ctx context.Context, workers int) {
 					opCtx, opCancel := context.WithTimeout(ctx, 5*time.Second)
 					batch, err := PrepareSharedCidsBatch(opCtx, db.conn, persistCids)
 					if err != nil {
-						db.log.Errorf("batching shared cids %v", err)
+						db.log.Error("batching shared cids", "err", err)
 						opCancel()
 						continue
 					}
@@ -113,20 +113,20 @@ func (db *ClickhouseDB) internalFlushingLoop(ctx context.Context, workers int) {
 					opCancel()
 
 				case <-db.closeFlusher:
-					db.log.WithField("worker", wId).Debug("closing worker, control close")
+					db.log.Debug("closing worker, control close", "worker", wId)
 					persistCids := db.cidBatcher.Reset()
 					opCtx, opCancel := context.WithTimeout(ctx, 5*time.Second)
 					defer opCancel()
 					batch, err := PrepareSharedCidsBatch(opCtx, db.conn, persistCids)
 					if err != nil {
-						db.log.Errorf("batching shared cids %v", err)
+						db.log.Error("batching shared cids", "err", err)
 						return
 					}
 					db.send(opCtx, batch, CidsTableName)
 					return
 
 				case <-ctx.Done():
-					db.log.WithField("worker", wId).Debug("closing worker, ctx died")
+					db.log.Debug("closing worker, ctx died", "worker", wId)
 					return
 				}
 			}
@@ -141,16 +141,14 @@ periodicFlushLoop:
 	for {
 		select {
 		case <-flusherT.C:
-			// flush all the non-empty batches
-			// flush cids
 			if db.cidBatcher.Len() > 0 {
-				db.log.WithField("rows", db.cidBatcher.Len()).Debug("flusher triggered")
+				db.log.Debug("flusher triggered", "rows", db.cidBatcher.Len())
 				persistCids := db.cidBatcher.Reset()
 
 				opCtx, opCancel := context.WithTimeout(ctx, 5*time.Second)
 				batch, err := PrepareSharedCidsBatch(opCtx, db.conn, persistCids)
 				if err != nil {
-					db.log.Errorf("batching shared cids %v", err)
+					db.log.Error("batching shared cids", "err", err)
 				}
 				db.send(opCtx, batch, CidsTableName)
 				flusherT.Reset(MaxFlushInterval)
@@ -174,18 +172,10 @@ func (db *ClickhouseDB) send(ctx context.Context, batch driver.Batch, table stri
 	start := time.Now()
 	err := batch.Send()
 	if err != nil {
-		db.log.WithFields(logrus.Fields{
-			"rows":  batch.Rows(),
-			"table": table,
-			"error": err.Error(),
-		}).Error("Failed to send ch batch")
+		db.log.Error("Failed to send ch batch", "rows", batch.Rows(), "table", table, "error", err.Error())
 	}
 	duration := time.Since(start)
-	db.log.WithFields(logrus.Fields{
-		"rows":     batch.Rows(),
-		"table":    table,
-		"duration": duration,
-	}).Info("Ch batch sent")
+	db.log.Info("Ch batch sent", "rows", batch.Rows(), "table", table, "duration", duration)
 	db.insertRowCount.Add(ctx, int64(batch.Rows()))
 	db.insertLatencyHistogram.Record(
 		ctx,
@@ -202,8 +192,8 @@ func (db *ClickhouseDB) PersistCidBatch(ctx context.Context, cids []SharedCid) {
 	select {
 	case db.cidC <- cids:
 	case <-ctx.Done():
-	case <-time.After(15 * time.Second): // arbitrary number
-		db.log.Warnf("attempt to queue Shared CIDs timed out -> lack of workers/resources?")
+	case <-time.After(15 * time.Second):
+		db.log.Warn("attempt to queue Shared CIDs timed out -> lack of workers/resources?")
 	}
 }
 
@@ -213,7 +203,7 @@ func (db *ClickhouseDB) Close() error {
 	case <-db.flusherClosedC:
 		db.log.Debug("flushing routines were shutdown")
 	case <-time.After(15 * time.Second):
-		db.log.Errorf("flushing db before shutting down took more than 15 secs, something went wrong!")
+		db.log.Error("flushing db before shutting down took more than 15 secs, something went wrong!")
 	}
 	return db.conn.Close()
 }

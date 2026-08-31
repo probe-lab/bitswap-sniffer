@@ -2,14 +2,19 @@ package main
 
 import (
 	"context"
+	"log/slog"
+	"slices"
 	"time"
 
 	"github.com/pkg/errors"
 	"github.com/probe-lab/bitswap-sniffer/bitswap"
+	plcli "github.com/probe-lab/go-commons/cli"
 	"github.com/probe-lab/go-commons/db"
-	"github.com/sirupsen/logrus"
 	cli "github.com/urfave/cli/v3"
+	"go.opentelemetry.io/otel"
 )
+
+const envPrefix = "BITSNIFFER_"
 
 var runConfig = struct {
 	Libp2pHost        string
@@ -20,45 +25,43 @@ var runConfig = struct {
 	Flushers          int
 	LevelDB           string
 	DiscoveryInterval time.Duration
-	ChDriver          string
-	ChHost            string
-	ChPort            int
-	ChUser            string
-	ChPassword        string
-	ChDatabase        string
-	ChCluster         string
-	ChMigrationEngine string
-	ChSecure          bool
 	ConnectionsLow    int
 	ConnectionsHigh   int
+	ClickhouseConfig  *db.ClickHouseConfig
+	MigrationsConfig  *db.ClickHouseMigrationsConfig
 }{
 	Libp2pHost:        "127.0.0.1",
 	Libp2pPort:        9020,
 	ConnectionTimeout: 15 * time.Second,
-	CacheSize:         0,     // arbitrary number
-	BatcherSize:       1_024, // arbitrary number
+	CacheSize:         0,
+	BatcherSize:       1_024,
 	Flushers:          5,
 	LevelDB:           "./ds",
 	DiscoveryInterval: 1 * time.Minute,
-	ChDriver:          "local",
-	ChHost:            "127.0.0.1",
-	ChPort:            9000,
-	ChUser:            "username",
-	ChPassword:        "password",
-	ChDatabase:        "bitswap_sniffer_db",
-	ChCluster:         "",
-	ChMigrationEngine: "TinyLog",
-	ChSecure:          false,
 	ConnectionsLow:    1_000,
 	ConnectionsHigh:   8_000,
+	ClickhouseConfig:  defaultClickhouseConfig(),
+	MigrationsConfig:  db.DefaultClickHouseMigrationsConfig(),
+}
+
+// defaultClickhouseConfig builds this app's historical ClickHouse defaults.
+// db.DefaultClickHouseConfig sets both User and Database to the given name,
+// so the user needs overriding to match today's actual default.
+func defaultClickhouseConfig() *db.ClickHouseConfig {
+	cfg := db.DefaultClickHouseConfig("bitswap_sniffer_db")
+	cfg.BaseConfig.User = "username"
+	return cfg
 }
 
 var cmdRun = &cli.Command{
-	Name:                  "run",
-	Usage:                 "Connects and scans a given node for its custody and network status",
-	EnableShellCompletion: true,
-	Action:                scanAction,
-	Flags:                 runFlags,
+	Name:   "run",
+	Usage:  "Connects and scans a given node for its custody and network status",
+	Action: scanAction,
+	Flags: slices.Concat(
+		plcli.ClickHouseFlags(envPrefix, runConfig.ClickhouseConfig),
+		plcli.ClickHouseMigrationsFlags(envPrefix, runConfig.MigrationsConfig),
+		runFlags,
+	),
 }
 
 var runFlags = []cli.Flag{
@@ -67,156 +70,92 @@ var runFlags = []cli.Flag{
 		Usage:       "IP for the Libp2p host",
 		Value:       runConfig.Libp2pHost,
 		Destination: &runConfig.Libp2pHost,
-		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_LIBP2P_HOST"),
+		Sources:     cli.EnvVars(envPrefix + "LIBP2P_HOST"),
 	},
 	&cli.IntFlag{
 		Name:        "libp2p.port",
 		Usage:       "Port for the Libp2p host",
 		Value:       runConfig.Libp2pPort,
 		Destination: &runConfig.Libp2pPort,
-		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_LIBP2P_PORT"),
+		Sources:     cli.EnvVars(envPrefix + "LIBP2P_PORT"),
 	},
 	&cli.DurationFlag{
 		Name:        "connection.timeout",
 		Usage:       "Timeout for the connection attempt to the node",
 		Value:       runConfig.ConnectionTimeout,
 		Destination: &runConfig.ConnectionTimeout,
-		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_CONNECTION_TIMEOUT"),
+		Sources:     cli.EnvVars(envPrefix + "CONNECTION_TIMEOUT"),
 	},
 	&cli.IntFlag{
 		Name:        "cache.size",
 		Usage:       "Size for the CID cache",
 		Value:       runConfig.CacheSize,
 		Destination: &runConfig.CacheSize,
-		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_CACHE_SIZE"),
+		Sources:     cli.EnvVars(envPrefix + "CACHE_SIZE"),
 	},
 	&cli.StringFlag{
 		Name:        "ds.path",
 		Usage:       "Path to the LevelDB datastore",
 		Value:       runConfig.LevelDB,
 		Destination: &runConfig.LevelDB,
-		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_LEVEL_DB"),
+		Sources:     cli.EnvVars(envPrefix + "LEVEL_DB"),
 	},
 	&cli.DurationFlag{
 		Name:        "discovery.interval",
 		Usage:       "Interval between dht peer discovery lookups",
 		Value:       runConfig.DiscoveryInterval,
 		Destination: &runConfig.DiscoveryInterval,
-		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_DISCOVERY_INTERVAL"),
+		Sources:     cli.EnvVars(envPrefix + "DISCOVERY_INTERVAL"),
 	},
 	&cli.IntFlag{
 		Name:        "batcher.size",
 		Usage:       "Maximum number of items that will be cached before persisting into the DB",
 		Value:       runConfig.BatcherSize,
 		Destination: &runConfig.BatcherSize,
-		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_BATCHER_SIZE"),
+		Sources:     cli.EnvVars(envPrefix + "BATCHER_SIZE"),
 	},
 	&cli.IntFlag{
 		Name:        "ch.flushers",
 		Usage:       "Number of go-routines that will be flushing cids into the DB",
 		Value:       runConfig.Flushers,
 		Destination: &runConfig.Flushers,
-		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_CH_FLUSHERS"),
-	},
-	&cli.StringFlag{
-		Name:        "ch.driver",
-		Usage:       "Driver of the Database that will keep all the raw data (local, replicated)",
-		Value:       runConfig.ChDriver,
-		Destination: &runConfig.ChDriver,
-		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_CH_DRIVER"),
-	},
-	&cli.StringFlag{
-		Name:        "ch.host",
-		Usage:       "IP of the Database",
-		Value:       runConfig.ChHost,
-		Destination: &runConfig.ChHost,
-		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_CH_HOST"),
-	},
-	&cli.IntFlag{
-		Name:        "ch.port",
-		Usage:       "Port of the Database",
-		Value:       runConfig.ChPort,
-		Destination: &runConfig.ChPort,
-		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_CH_PORT"),
-	},
-	&cli.StringFlag{
-		Name:        "ch.user",
-		Usage:       "User of the Database that will keep all the raw data",
-		Value:       runConfig.ChUser,
-		Destination: &runConfig.ChUser,
-		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_CH_USER"),
-	},
-	&cli.StringFlag{
-		Name:        "ch.password",
-		Usage:       "Password for the user of the given Database",
-		Value:       runConfig.ChPassword,
-		Destination: &runConfig.ChPassword,
-		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_CH_PASSWORD"),
-	},
-	&cli.StringFlag{
-		Name:        "ch.database",
-		Usage:       "Name of the Database that will keep all the raw data",
-		Value:       runConfig.ChDatabase,
-		Destination: &runConfig.ChDatabase,
-		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_CH_DATABASE"),
-	},
-	&cli.StringFlag{
-		Name:        "ch.cluster",
-		Usage:       "Name of the Cluster that will keep all the raw data",
-		Value:       runConfig.ChCluster,
-		Destination: &runConfig.ChCluster,
-		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_CH_CLUSTER"),
-	},
-	&cli.BoolFlag{
-		Name:        "ch.secure",
-		Usage:       "Whether we use or not use of TLS while connecting clickhouse",
-		Value:       runConfig.ChSecure,
-		Destination: &runConfig.ChSecure,
-		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_CH_SECURE"),
-	},
-	&cli.StringFlag{
-		Name:        "ch.engine",
-		Usage:       "CH engine that will be used for the migrations",
-		Value:       runConfig.ChMigrationEngine,
-		Destination: &runConfig.ChMigrationEngine,
-		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_CH_ENGINE"),
+		Sources:     cli.EnvVars(envPrefix + "CH_FLUSHERS"),
 	},
 	&cli.IntFlag{
 		Name:        "connections.low",
 		Usage:       "The low water mark for the connection manager.",
 		Value:       runConfig.ConnectionsLow,
 		Destination: &runConfig.ConnectionsLow,
-		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_CONNECTIONS_LOW"),
+		Sources:     cli.EnvVars(envPrefix + "CONNECTIONS_LOW"),
 	},
 	&cli.IntFlag{
 		Name:        "connections.high",
 		Usage:       "The high water mark for the connection manager.",
 		Value:       runConfig.ConnectionsHigh,
 		Destination: &runConfig.ConnectionsHigh,
-		Sources:     cli.EnvVars("BITSWAP_SNIFFER_RUN_CONNECTIONS_HIGH"),
+		Sources:     cli.EnvVars(envPrefix + "CONNECTIONS_HIGH"),
 	},
 }
 
 func scanAction(ctx context.Context, cmd *cli.Command) error {
-	log := rootConfig.Logger
-	rootConfig.Logger.WithFields(logrus.Fields{
-		"libp2p-host":        runConfig.Libp2pHost,
-		"libp2p-port":        runConfig.Libp2pPort,
-		"connection-timeout": runConfig.ConnectionTimeout,
-		"cache-size":         runConfig.CacheSize,
-		"batcher-size":       runConfig.BatcherSize,
-		"level-db":           runConfig.LevelDB,
-		"discv-interval":     runConfig.DiscoveryInterval,
-		"ch-flushers":        runConfig.Flushers,
-		"ch-driver":          runConfig.ChDriver,
-		"ch-host":            runConfig.ChHost,
-		"ch-port":            runConfig.ChPort,
-		"ch-user":            runConfig.ChUser,
-		"ch-database":        runConfig.ChDatabase,
-		"ch-cluster":         runConfig.ChCluster,
-		"ch-secure":          runConfig.ChSecure,
-		"ch-engine":          runConfig.ChMigrationEngine,
-	}).Info("running run command...")
+	log := slog.Default()
+	log.Info("running run command...",
+		"libp2p-host", runConfig.Libp2pHost,
+		"libp2p-port", runConfig.Libp2pPort,
+		"connection-timeout", runConfig.ConnectionTimeout,
+		"cache-size", runConfig.CacheSize,
+		"batcher-size", runConfig.BatcherSize,
+		"level-db", runConfig.LevelDB,
+		"discv-interval", runConfig.DiscoveryInterval,
+		"ch-flushers", runConfig.Flushers,
+		"ch-host", runConfig.ClickhouseConfig.BaseConfig.Host,
+		"ch-port", runConfig.ClickhouseConfig.BaseConfig.Port,
+		"ch-user", runConfig.ClickhouseConfig.BaseConfig.User,
+		"ch-database", runConfig.ClickhouseConfig.Database,
+		"ch-cluster", runConfig.MigrationsConfig.ClusterName,
+		"ch-secure", runConfig.ClickhouseConfig.BaseConfig.SSL,
+		"ch-engine", runConfig.MigrationsConfig.MigrationsTableEngine,
+	)
 
 	snifferConfig := &bitswap.SnifferConfig{
 		Libp2pHost:        runConfig.Libp2pHost,
@@ -228,7 +167,7 @@ func scanAction(ctx context.Context, cmd *cli.Command) error {
 		CacheSize:         runConfig.CacheSize,
 		LevelDB:           runConfig.LevelDB,
 		Logger:            log,
-		Telemetry:         rootConfig.MetricsProvider,
+		Telemetry:         otel.GetMeterProvider(),
 	}
 	err := snifferConfig.Validate()
 	if err != nil {
@@ -241,25 +180,11 @@ func scanAction(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	conDetails := &bitswap.ChConfig{
-		ClickHouseConfig: db.ClickHouseConfig{
-			BaseConfig: &db.ClickHouseBaseConfig{
-				Host: runConfig.ChHost,
-				Port: runConfig.ChPort,
-				User: runConfig.ChUser,
-				Pass: runConfig.ChPassword,
-				SSL:  runConfig.ChSecure,
-			},
-			Database: runConfig.ChDatabase,
-		},
-		ClickHouseMigrationsConfig: db.ClickHouseMigrationsConfig{
-			ClusterName:            runConfig.ChCluster,
-			MigrationsTableEngine:  runConfig.ChMigrationEngine,
-			MultiStatementEnabled:  false,
-			ReplicatedTableEngines: runConfig.ChDriver == "replicated",
-		},
-		BatchSize: runConfig.BatcherSize,
-		Flushers:  runConfig.Flushers,
-		Telemetry: rootConfig.MetricsProvider,
+		ClickHouseConfig:           *runConfig.ClickhouseConfig,
+		ClickHouseMigrationsConfig: *runConfig.MigrationsConfig,
+		BatchSize:                  runConfig.BatcherSize,
+		Flushers:                   runConfig.Flushers,
+		Telemetry:                  otel.GetMeterProvider(),
 	}
 	chCli, err := bitswap.NewClickhouseDB(conDetails, log)
 	if err != nil {

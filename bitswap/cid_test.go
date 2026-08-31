@@ -2,12 +2,12 @@ package bitswap
 
 import (
 	"context"
+	"log/slog"
 	"testing"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/probe-lab/go-commons/db"
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	sdkmetrics "go.opentelemetry.io/otel/sdk/metric"
 )
@@ -24,13 +24,11 @@ func TestCidQueries(t *testing.T) {
 
 	cids, batch := createSharedCidsbatch(t, context.Background(), chCli.conn)
 
-	// test the schema of the db
 	err = ValidateSharedCidsTableSchema(context.Background(), chCli.conn)
 	require.NoError(t, err)
 
 	chCli.send(context.Background(), batch, CidsTableName)
 
-	// do the requests
 	// get all the cids
 	respCids, err := RequestCids(context.Background(), chCli.conn)
 	require.NoError(t, err)
@@ -97,7 +95,6 @@ func TestCidQueries(t *testing.T) {
 }
 
 func createTestDB(t *testing.T) *ClickhouseDB {
-	// init the db
 	config := &ChConfig{
 		ClickHouseConfig: db.ClickHouseConfig{
 			BaseConfig: &db.ClickHouseBaseConfig{
@@ -119,7 +116,7 @@ func createTestDB(t *testing.T) *ClickhouseDB {
 		Telemetry: sdkmetrics.NewMeterProvider(),
 	}
 
-	clickhouse, err := NewClickhouseDB(config, logrus.New())
+	clickhouse, err := NewClickhouseDB(config, slog.Default())
 	require.NoError(t, err)
 	return clickhouse
 }
