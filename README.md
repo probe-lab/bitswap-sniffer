@@ -48,9 +48,9 @@ GLOBAL OPTIONS:
 
    --aws.region string    The AWS region that this service runs in. [$AWS_REGION]
    --metrics.enabled      Whether to expose metrics information [$BITSNIFFER_METRICS_ENABLED]
-   --metrics.host string  Which network interface should the metrics endpoint bind to (default: "127.0.0.1") [$BITSNIFFER_METRICS_HOST]
+   --metrics.host string  Which network interface should the metrics endpoint bind to (default: "localhost") [$BITSNIFFER_METRICS_HOST]
    --metrics.path string  On which path should the metrics endpoint listen (default: "/metrics") [$BITSNIFFER_METRICS_PATH]
-   --metrics.port int     On which port should the metrics endpoint listen (default: 9080) [$BITSNIFFER_METRICS_PORT]
+   --metrics.port int     On which port should the metrics endpoint listen (default: 6060) [$BITSNIFFER_METRICS_PORT]
    --tracing.enabled      Whether to emit trace data [$BITSNIFFER_TRACING_ENABLED]
 ```
 
@@ -65,7 +65,6 @@ USAGE:
 OPTIONS:
    --batcher.size int             Maximum number of items that will be cached before persisting into the DB (default: 1024) [$BITSNIFFER_BATCHER_SIZE]
    --cache.size int               Size for the CID cache (default: 0) [$BITSNIFFER_CACHE_SIZE]
-   --ch.flushers int              Number of go-routines that will be flushing cids into the DB (default: 5) [$BITSNIFFER_CH_FLUSHERS]
    --connection.timeout duration  Timeout for the connection attempt to the node (default: 15s) [$BITSNIFFER_CONNECTION_TIMEOUT]
    --connections.high int         The high water mark for the connection manager. (default: 8000) [$BITSNIFFER_CONNECTIONS_HIGH]
    --connections.low int          The low water mark for the connection manager. (default: 1000) [$BITSNIFFER_CONNECTIONS_LOW]
@@ -95,8 +94,8 @@ GLOBAL OPTIONS:
    --log.format string    Sets the format to output the log statements in: text, json (default: "text") [$BITSNIFFER_LOG_FORMAT]
    --log.source           Compute the source code position of a log statement and add a SourceKey attribute to the output. [$BITSNIFFER_LOG_SOURCE]
    --metrics.enabled      Whether to expose metrics information [$BITSNIFFER_METRICS_ENABLED]
-   --metrics.host string  Which network interface should the metrics endpoint bind to (default: "127.0.0.1") [$BITSNIFFER_METRICS_HOST]
-   --metrics.port int     On which port should the metrics endpoint listen (default: 9080) [$BITSNIFFER_METRICS_PORT]
+   --metrics.host string  Which network interface should the metrics endpoint bind to (default: "localhost") [$BITSNIFFER_METRICS_HOST]
+   --metrics.port int     On which port should the metrics endpoint listen (default: 6060) [$BITSNIFFER_METRICS_PORT]
    --metrics.path string  On which path should the metrics endpoint listen (default: "/metrics") [$BITSNIFFER_METRICS_PATH]
    --tracing.enabled      Whether to emit trace data [$BITSNIFFER_TRACING_ENABLED]
    --aws.region string    The AWS region that this service runs in. [$AWS_REGION]

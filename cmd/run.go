@@ -10,7 +10,6 @@ import (
 	"github.com/probe-lab/bitswap-sniffer/bitswap"
 	plcli "github.com/probe-lab/go-commons/cli"
 	"github.com/probe-lab/go-commons/db"
-	commonlog "github.com/probe-lab/go-commons/log"
 	cli "github.com/urfave/cli/v3"
 	"go.opentelemetry.io/otel"
 )
@@ -121,11 +120,6 @@ var runFlags = []cli.Flag{
 }
 
 func scanAction(ctx context.Context, cmd *cli.Command) error {
-
-	if err := commonlog.SetGlobalLogger(rootConfig.Log); err != nil {
-		return err
-	}
-
 	slog.Info("running run command...",
 		"libp2p-host", runConfig.Libp2pHost,
 		"libp2p-port", runConfig.Libp2pPort,
@@ -141,6 +135,12 @@ func scanAction(ctx context.Context, cmd *cli.Command) error {
 		"ch-cluster", runConfig.MigrationsConfig.ClusterName,
 		"ch-secure", runConfig.ClickhouseConfig.BaseConfig.SSL,
 		"ch-engine", runConfig.MigrationsConfig.MigrationsTableEngine,
+		"log-level", rootConfig.Log.Level,
+		"log-format", rootConfig.Log.Format,
+		"metrics-enabled", rootConfig.Metrics.Enabled,
+		"metrics-host", rootConfig.Metrics.Host,
+		"metrics-port", rootConfig.Metrics.Port,
+		"tracing-enabled", rootConfig.Trace.Enabled,
 	)
 
 	snifferConfig := &bitswap.SnifferConfig{
