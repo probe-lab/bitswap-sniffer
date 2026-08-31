@@ -22,7 +22,6 @@ type DiscoveryConfig struct {
 
 type Discovery struct {
 	cfg       *DiscoveryConfig
-	log       *slog.Logger
 	dhtCli    *kaddht.IpfsDHT
 	bsNetwork network.BitSwapNetwork
 
@@ -30,12 +29,11 @@ type Discovery struct {
 	MeterLookups metric.Int64Counter
 }
 
-func NewDiscovery(dhtCli *kaddht.IpfsDHT, bsNet network.BitSwapNetwork, log *slog.Logger, cfg *DiscoveryConfig) (*Discovery, error) {
-	log.Info("Initialize Discovery service")
+func NewDiscovery(dhtCli *kaddht.IpfsDHT, bsNet network.BitSwapNetwork, cfg *DiscoveryConfig) (*Discovery, error) {
+	slog.Info("Initialize Discovery service")
 
 	d := &Discovery{
 		cfg:       cfg,
-		log:       log,
 		dhtCli:    dhtCli,
 		bsNetwork: bsNet,
 	}
@@ -49,8 +47,8 @@ func NewDiscovery(dhtCli *kaddht.IpfsDHT, bsNet network.BitSwapNetwork, log *slo
 }
 
 func (d *Discovery) Serve(ctx context.Context) (err error) {
-	d.log.Info("Starting DHT Discovery Service", "interval", d.cfg.Interval)
-	defer d.log.Info("Stopped DHT Discovery Service")
+	slog.Info("Starting DHT Discovery Service", "interval", d.cfg.Interval)
+	defer slog.Info("Stopped DHT Discovery Service")
 
 	for {
 
@@ -61,9 +59,9 @@ func (d *Discovery) Serve(ctx context.Context) (err error) {
 
 		start := time.Now()
 		timeoutCtx, timeoutCancel := context.WithTimeout(ctx, time.Minute)
-		d.log.Info("DHT discovery: looking up random key", "key", hex.EncodeToString(k))
+		slog.Info("DHT discovery: looking up random key", "key", hex.EncodeToString(k))
 		peers, err := d.dhtCli.GetClosestPeers(timeoutCtx, string(k))
-		d.log.Info("DHT discovery: finished lookup",
+		slog.Info("DHT discovery: finished lookup",
 			"count", len(peers),
 			"err", err,
 			"took", time.Since(start).String(),

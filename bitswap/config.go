@@ -34,7 +34,6 @@ type SnifferConfig struct {
 	LevelDB           string
 	DiscoveryInterval time.Duration
 
-	Logger    *slog.Logger
 	Telemetry metric.MeterProvider
 }
 
@@ -56,9 +55,6 @@ func (c *SnifferConfig) Validate() error {
 		return fmt.Errorf("invalid level-db path: %s", c.LevelDB)
 	}
 
-	if c.Logger == nil {
-		return fmt.Errorf("no logger on sniffer config")
-	}
 	if c.Telemetry == nil {
 		return fmt.Errorf("no metrics-service on sniffer config")
 	}
@@ -69,19 +65,19 @@ func (c *SnifferConfig) Libp2pOptions() ([]libp2p.Option, error) {
 	mAddrs := make([]ma.Multiaddr, 0, 2)
 	tcpAddr, err := ma.NewMultiaddr(fmt.Sprintf("/ip4/%s/tcp/%d", c.Libp2pHost, c.Libp2pPort))
 	if err != nil {
-		c.Logger.Error(err.Error())
+		slog.Error(err.Error())
 		return nil, err
 	}
 	quicAddr, err := ma.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/%d/quic-v1", c.Libp2pHost, c.Libp2pPort))
 	if err != nil {
-		c.Logger.Error(err.Error())
+		slog.Error(err.Error())
 		return nil, err
 	}
 
 	mAddrs = append(mAddrs, tcpAddr, quicAddr)
 	cm, err := connmgr.NewConnManager(c.ConnectionsLow, c.ConnectionsHigh)
 	if err != nil {
-		c.Logger.Error(err.Error())
+		slog.Error(err.Error())
 		return nil, err
 	}
 
@@ -113,9 +109,9 @@ func (c *SnifferConfig) CreateDatastore(ctx context.Context) (*leveldb.Datastore
 		return nil, err
 	}
 	// We don't store the priv key of the host, thus, delete any existing files
-	c.Logger.Info("Deleting old datastore...")
+	slog.Info("Deleting old datastore...")
 	if err := ds.Delete(ctx, datastore.NewKey("/")); err != nil {
-		c.Logger.Warn("Couldn't delete old datastore", "err", err)
+		slog.Warn("Couldn't delete old datastore", "err", err)
 	}
 	return ds, nil
 }

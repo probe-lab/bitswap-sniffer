@@ -11,6 +11,9 @@ import (
 	plcli "github.com/probe-lab/go-commons/cli"
 )
 
+// rootConfig is populated by plcli.NewRootCommand before rootCmd.Before runs.
+var rootConfig *plcli.RootCommandConfig
+
 var rootCmd = &cli.Command{
 	Name:  "bitsniffer",
 	Usage: "Connects to the IPFS DHT and sniffs bitswap traffic",
@@ -20,13 +23,8 @@ var rootCmd = &cli.Command{
 }
 
 func main() {
-	rootApp, rootConfig := plcli.NewRootCommand(rootCmd)
-
-	// preserve this app's existing metrics defaults (always-on, matches
-	// prometheus/prometheus.yml's scrape target and current deployments).
-	rootConfig.Metrics.Enabled = true
-	rootConfig.Metrics.Host = "127.0.0.1"
-	rootConfig.Metrics.Port = 9080
+	var rootApp *plcli.RootCommand
+	rootApp, rootConfig = plcli.NewRootCommand(rootCmd)
 
 	if err := rootApp.Run(); err != nil && !errors.Is(err, context.Canceled) {
 		slog.Error("terminated abnormally", "err", err)

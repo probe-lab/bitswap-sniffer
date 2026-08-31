@@ -31,7 +31,6 @@ import (
 
 type Sniffer struct {
 	config *SnifferConfig
-	log    *slog.Logger
 
 	// cid comsumer-related
 	cidCache            *lru.Cache[string, struct{}]
@@ -62,7 +61,6 @@ func NewSniffer(
 	ds *leveldb.Datastore,
 	db *ClickhouseDB) (*Sniffer, error) {
 
-	log := config.Logger
 	cidC := make(chan []SharedCid)
 
 	bs := blockstore.NewBlockstore(ds)
@@ -77,7 +75,7 @@ func NewSniffer(
 		return nil, err
 	}
 
-	cidTracer, err := NewCidTracer(log, h.ID(), cidC)
+	cidTracer, err := NewCidTracer(h.ID(), cidC)
 	if err != nil {
 		return nil, err
 	}
@@ -131,7 +129,6 @@ func NewSniffer(
 	discv, err := NewDiscovery(
 		dhtCli,
 		bitswapNetworks,
-		log,
 		&DiscoveryConfig{
 			Interval:  config.DiscoveryInterval,
 			Telemetry: config.Telemetry,
@@ -149,7 +146,6 @@ func NewSniffer(
 		}
 	}
 	return &Sniffer{
-		log:                 log,
 		config:              config,
 		cidCache:            cidCache,
 		cidC:                cidC,
@@ -170,22 +166,22 @@ func (s *Sniffer) Serve(ctx context.Context) error {
 		var err error
 		err = s.bitswap.Close()
 		if err != nil {
-			s.log.Error("closing bitswap", "err", err)
+			slog.Error("closing bitswap", "err", err)
 		}
 
 		err = s.dhtCli.Close()
 		if err != nil {
-			s.log.Error("closing dht client", "err", err)
+			slog.Error("closing dht client", "err", err)
 		}
 
 		err = s.dhtCli.Host().Close()
 		if err != nil {
-			s.log.Error("closing libp2p host", "err", err)
+			slog.Error("closing libp2p host", "err", err)
 		}
 
 		err = s.ds.Close()
 		if err != nil {
-			s.log.Error("closing datastore", "err", err)
+			slog.Error("closing datastore", "err", err)
 		}
 
 		<-s.cidConsumerDone
@@ -193,7 +189,7 @@ func (s *Sniffer) Serve(ctx context.Context) error {
 
 		err = s.db.Close()
 		if err != nil {
-			s.log.Error("closing db", "err", err)
+			slog.Error("closing db", "err", err)
 		}
 
 	}()
@@ -212,10 +208,10 @@ func (s *Sniffer) Serve(ctx context.Context) error {
 		case <-time.After(10 * time.Second):
 			stats, err := s.bitswap.Stat()
 			if err != nil {
-				s.log.Warn("unable to get bitswap server stats", "err", err)
+				slog.Warn("unable to get bitswap server stats", "err", err)
 				continue
 			}
-			s.log.Info("bitswap stats...",
+			slog.Info("bitswap stats...",
 				"want-list", len(stats.Wantlist),
 				"peers", len(stats.Peers),
 				"msg-received", stats.MessagesReceived,
@@ -260,7 +256,7 @@ func (s *Sniffer) Init(ctx context.Context) error {
 
 	for _, bootnode := range succBootnodes {
 		attrs := getLibp2pHostInfo(s.dhtCli.Host(), bootnode)
-		s.log.Debug("bootnode info",
+		slog.Debug("bootnode info",
 			"peer_id", bootnode.String(),
 			"agent_version", attrs["agent_version"],
 			"protocols", attrs["protocols"],
@@ -294,7 +290,7 @@ func (s *Sniffer) makeSnifferAppealing(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	s.log.Info("Bitswap appealer: pretending to fetch cid from bitswap...", "cid", randCid.String())
+	slog.Info("Bitswap appealer: pretending to fetch cid from bitswap...", "cid", randCid.String())
 
 	go func() {
 		for {
@@ -303,11 +299,11 @@ func (s *Sniffer) makeSnifferAppealing(ctx context.Context) error {
 				close(s.bitswapAppealerDone)
 				return
 			case <-time.After(15 * time.Second):
-				s.log.Info("Bitswap appealer: pretending to fetch cid from bitswap...", "cid", randCid.String())
+				slog.Info("Bitswap appealer: pretending to fetch cid from bitswap...", "cid", randCid.String())
 				getBlockCtx, cancel := context.WithTimeout(ctx, 1*time.Minute)
 				_, err := s.bitswap.GetBlock(getBlockCtx, randCid)
 				if err != nil {
-					s.log.Warn("Bitswap appealer: Opps! (as expected) we couldn't find this random CID", "cid", randCid.String(), "err", err)
+					slog.Warn("Bitswap appealer: Opps! (as expected) we couldn't find this random CID", "cid", randCid.String(), "err", err)
 				}
 				cancel()
 			}
@@ -364,12 +360,12 @@ func (s *Sniffer) bootstrapDHT(ctx context.Context, bootstrappers []peer.AddrInf
 			defer wg.Done()
 			err := s.dhtCli.Host().Connect(ctx, bn)
 			if err != nil {
-				s.log.Warn("unable to connect bootstrap node", "bootnode", bn.String(), "err", err)
+				slog.Warn("unable to connect bootstrap node", "bootnode", bn.String(), "err", err)
 			} else {
 				m.Lock()
 				succBootnodes = append(succBootnodes, bn.ID)
 				m.Unlock()
-				s.log.Debug("successful connection to bootstrap node", "bootnode", bn.String())
+				slog.Debug("successful connection to bootstrap node", "bootnode", bn.String())
 			}
 		}(bnode)
 	}
@@ -387,12 +383,12 @@ func (s *Sniffer) bootstrapDHT(ctx context.Context, bootstrappers []peer.AddrInf
 
 	routingSize := s.dhtCli.RoutingTable().Size()
 	if err != nil {
-		s.log.Warn("unable to bootstrap the dht-node", "err", err)
+		slog.Warn("unable to bootstrap the dht-node", "err", err)
 	}
 	if routingSize == 0 {
-		s.log.Warn("no error, but empty routing table after bootstrapping")
+		slog.Warn("no error, but empty routing table after bootstrapping")
 	}
-	s.log.Info("dht cli bootstrapped",
+	slog.Info("dht cli bootstrapped",
 		"successful-bootnodes", fmt.Sprintf("%d/%d", len(succBootnodes), len(bootstrappers)),
 		"peers_in_routing", routingSize,
 	)

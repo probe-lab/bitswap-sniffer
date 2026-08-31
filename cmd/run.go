@@ -10,6 +10,7 @@ import (
 	"github.com/probe-lab/bitswap-sniffer/bitswap"
 	plcli "github.com/probe-lab/go-commons/cli"
 	"github.com/probe-lab/go-commons/db"
+	commonlog "github.com/probe-lab/go-commons/log"
 	cli "github.com/urfave/cli/v3"
 	"go.opentelemetry.io/otel"
 )
@@ -38,17 +39,8 @@ var runConfig = struct {
 	DiscoveryInterval: 1 * time.Minute,
 	ConnectionsLow:    1_000,
 	ConnectionsHigh:   8_000,
-	ClickhouseConfig:  defaultClickhouseConfig(),
+	ClickhouseConfig:  db.DefaultClickHouseConfig("bitswap_sniffer_db"),
 	MigrationsConfig:  db.DefaultClickHouseMigrationsConfig(),
-}
-
-// defaultClickhouseConfig builds this app's historical ClickHouse defaults.
-// db.DefaultClickHouseConfig sets both User and Database to the given name,
-// so the user needs overriding to match today's actual default.
-func defaultClickhouseConfig() *db.ClickHouseConfig {
-	cfg := db.DefaultClickHouseConfig("bitswap_sniffer_db")
-	cfg.BaseConfig.User = "username"
-	return cfg
 }
 
 var cmdRun = &cli.Command{
@@ -129,8 +121,12 @@ var runFlags = []cli.Flag{
 }
 
 func scanAction(ctx context.Context, cmd *cli.Command) error {
-	log := slog.Default()
-	log.Info("running run command...",
+
+	if err := commonlog.SetGlobalLogger(rootConfig.Log); err != nil {
+		return err
+	}
+
+	slog.Info("running run command...",
 		"libp2p-host", runConfig.Libp2pHost,
 		"libp2p-port", runConfig.Libp2pPort,
 		"connection-timeout", runConfig.ConnectionTimeout,
@@ -156,7 +152,6 @@ func scanAction(ctx context.Context, cmd *cli.Command) error {
 		DiscoveryInterval: runConfig.DiscoveryInterval,
 		CacheSize:         runConfig.CacheSize,
 		LevelDB:           runConfig.LevelDB,
-		Logger:            log,
 		Telemetry:         otel.GetMeterProvider(),
 	}
 	err := snifferConfig.Validate()
@@ -175,7 +170,7 @@ func scanAction(ctx context.Context, cmd *cli.Command) error {
 		BatchSize:                  runConfig.BatcherSize,
 		Telemetry:                  otel.GetMeterProvider(),
 	}
-	chCli, err := bitswap.NewClickhouseDB(conDetails, log)
+	chCli, err := bitswap.NewClickhouseDB(conDetails)
 	if err != nil {
 		return errors.Wrap(err, "opening ch db")
 

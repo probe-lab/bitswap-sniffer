@@ -17,16 +17,14 @@ import (
 )
 
 type CidTracer struct {
-	log      *slog.Logger
 	producer peer.ID
 	cidC     chan []SharedCid
 }
 
 var _ tracer.Tracer = &CidTracer{}
 
-func NewCidTracer(log *slog.Logger, producerID peer.ID, cidC chan []SharedCid) (*CidTracer, error) {
+func NewCidTracer(producerID peer.ID, cidC chan []SharedCid) (*CidTracer, error) {
 	return &CidTracer{
-		log:      log,
 		producer: producerID,
 		cidC:     cidC,
 	}, nil
@@ -117,7 +115,7 @@ func (t *CidTracer) streamCid(direction string, pid peer.ID, bmsg bsmsg.BitSwapM
 		)
 	}
 
-	t.log.Debug("more cids tracked from bitswap",
+	slog.Debug("more cids tracked from bitswap",
 		"peer", pid.String(),
 		"direction", direction,
 		"want", len(bmsg.Wantlist()),
@@ -142,7 +140,7 @@ func (t *CidTracer) dhtRequestTracer(ctx context.Context, s network.Stream, req 
 	case dht_pb.Message_ADD_PROVIDER:
 		cid, err = handleAddProvider(providerId, req)
 		if err != nil {
-			t.log.Error("dht: unable to extract the cid from given key",
+			slog.Error("dht: unable to extract the cid from given key",
 				"key", string(req.Key),
 				"remote-peer", providerId.String(),
 				"err", err,
@@ -162,7 +160,7 @@ func (t *CidTracer) dhtRequestTracer(ctx context.Context, s network.Stream, req 
 	case dht_pb.Message_GET_PROVIDERS:
 		cid, err = handleGetProvider(req)
 		if err != nil {
-			t.log.Error("dht: unable to extract the cid from given key",
+			slog.Error("dht: unable to extract the cid from given key",
 				"key", string(req.Key),
 				"remote-peer", providerId.String(),
 				"err", err,
@@ -180,11 +178,11 @@ func (t *CidTracer) dhtRequestTracer(ctx context.Context, s network.Stream, req 
 		}
 
 	default:
-		t.log.Debug("dropping not relevant dht message...", "type", dht_pb.Message_MessageType_name[int32(req.Type)])
+		slog.Debug("dropping not relevant dht message...", "type", dht_pb.Message_MessageType_name[int32(req.Type)])
 		return
 	}
 
-	t.log.Debug("more cids tracked from the DHT server",
+	slog.Debug("more cids tracked from the DHT server",
 		"peer", providerId.String(),
 		"key", sharedCid.Cid,
 		"op", sharedCid.Type,

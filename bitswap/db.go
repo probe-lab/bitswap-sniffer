@@ -34,16 +34,14 @@ func (c *ChConfig) Validate() error {
 
 type ClickhouseDB struct {
 	config *ChConfig
-	log    *slog.Logger
 
 	conn     driver.Conn
 	inserter *db.BatchInserter[SharedCid]
 }
 
-func NewClickhouseDB(config *ChConfig, log *slog.Logger) (*ClickhouseDB, error) {
+func NewClickhouseDB(config *ChConfig) (*ClickhouseDB, error) {
 	return &ClickhouseDB{
 		config: config,
-		log:    log,
 	}, nil
 }
 
@@ -79,7 +77,7 @@ func (c *ClickhouseDB) Init(ctx context.Context) error {
 func (c *ClickhouseDB) PersistCidBatch(ctx context.Context, cids []SharedCid) {
 	for _, cid := range cids {
 		if err := c.inserter.Submit(ctx, cid); err != nil {
-			c.log.Warn("failed to submit shared cid", "err", err)
+			slog.Warn("failed to submit shared cid", "err", err)
 		}
 	}
 }
@@ -89,7 +87,7 @@ func (c *ClickhouseDB) Close() error {
 	defer stopCancel()
 
 	if err := c.inserter.Stop(stopCtx); err != nil {
-		c.log.Error("stopping batch inserter", "err", err)
+		slog.Error("stopping batch inserter", "err", err)
 	}
 	return c.conn.Close()
 }

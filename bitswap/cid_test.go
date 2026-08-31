@@ -2,7 +2,6 @@ package bitswap
 
 import (
 	"context"
-	"log/slog"
 	"testing"
 	"time"
 
@@ -116,7 +115,7 @@ func createTestDB(t *testing.T) *ClickhouseDB {
 		Telemetry: sdkmetrics.NewMeterProvider(),
 	}
 
-	clickhouse, err := NewClickhouseDB(config, slog.Default())
+	clickhouse, err := NewClickhouseDB(config)
 	require.NoError(t, err)
 	return clickhouse
 }
