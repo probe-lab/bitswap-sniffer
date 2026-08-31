@@ -42,21 +42,6 @@ type SharedCid struct {
 	Origin string `ch:"origin" json:"origin"`
 }
 
-func PrepareSharedCidsBatch(ctx context.Context, db driver.Conn, cids []SharedCid) (driver.Batch, error) {
-	query := fmt.Sprintf("INSERT INTO %s", CidsTableName)
-	b, err := db.PrepareBatch(ctx, query)
-	if err != nil {
-		return nil, err
-	}
-	for _, cid := range cids {
-		err = b.AppendStruct(&cid)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return b, nil
-}
-
 func requestCids(ctx context.Context, db driver.Conn, conditions ...string) ([]SharedCid, error) {
 	fullCondition := ""
 	for i, condition := range conditions {

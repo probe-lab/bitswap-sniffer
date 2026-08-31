@@ -5,9 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/probe-lab/go-commons/db"
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	sdkmetrics "go.opentelemetry.io/otel/sdk/metric"
 )
@@ -22,15 +20,15 @@ func TestCidQueries(t *testing.T) {
 	err = dropAllShardeCidTable(context.Background(), chCli.conn)
 	require.NoError(t, err)
 
-	cids, batch := createSharedCidsbatch(t, context.Background(), chCli.conn)
+	cids := sharedCidFixtures()
 
-	// test the schema of the db
 	err = ValidateSharedCidsTableSchema(context.Background(), chCli.conn)
 	require.NoError(t, err)
 
-	chCli.send(context.Background(), batch, CidsTableName)
+	chCli.PersistCidBatch(context.Background(), cids)
+	err = chCli.inserter.Flush(context.Background())
+	require.NoError(t, err)
 
-	// do the requests
 	// get all the cids
 	respCids, err := RequestCids(context.Background(), chCli.conn)
 	require.NoError(t, err)
@@ -97,7 +95,6 @@ func TestCidQueries(t *testing.T) {
 }
 
 func createTestDB(t *testing.T) *ClickhouseDB {
-	// init the db
 	config := &ChConfig{
 		ClickHouseConfig: db.ClickHouseConfig{
 			BaseConfig: &db.ClickHouseBaseConfig{
@@ -115,17 +112,16 @@ func createTestDB(t *testing.T) *ClickhouseDB {
 			ReplicatedTableEngines: false,
 		},
 		BatchSize: 1,
-		Flushers:  1,
 		Telemetry: sdkmetrics.NewMeterProvider(),
 	}
 
-	clickhouse, err := NewClickhouseDB(config, logrus.New())
+	clickhouse, err := NewClickhouseDB(config)
 	require.NoError(t, err)
 	return clickhouse
 }
 
-func createSharedCidsbatch(t *testing.T, ctx context.Context, db driver.Conn) ([]SharedCid, driver.Batch) {
-	cids := []SharedCid{
+func sharedCidFixtures() []SharedCid {
+	return []SharedCid{
 		{
 			Timestamp: time.Now().Add(-24 * time.Hour).UTC(),
 			Direction: "received",
@@ -154,8 +150,4 @@ func createSharedCidsbatch(t *testing.T, ctx context.Context, db driver.Conn) ([
 			Origin:    OriginDHT,
 		},
 	}
-
-	batch, err := PrepareSharedCidsBatch(ctx, db, cids)
-	require.NoError(t, err)
-	return cids, batch
 }

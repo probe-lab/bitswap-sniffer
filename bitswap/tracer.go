@@ -3,6 +3,7 @@ package bitswap
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	bsmsg "github.com/ipfs/boxo/bitswap/message"
@@ -13,20 +14,17 @@ import (
 	peer "github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
 	"github.com/multiformats/go-multihash"
-	"github.com/sirupsen/logrus"
 )
 
 type CidTracer struct {
-	log      *logrus.Logger
 	producer peer.ID
 	cidC     chan []SharedCid
 }
 
 var _ tracer.Tracer = &CidTracer{}
 
-func NewCidTracer(log *logrus.Logger, producerID peer.ID, cidC chan []SharedCid) (*CidTracer, error) {
+func NewCidTracer(producerID peer.ID, cidC chan []SharedCid) (*CidTracer, error) {
 	return &CidTracer{
-		log:      log,
 		producer: producerID,
 		cidC:     cidC,
 	}, nil
@@ -117,21 +115,20 @@ func (t *CidTracer) streamCid(direction string, pid peer.ID, bmsg bsmsg.BitSwapM
 		)
 	}
 
-	t.log.WithFields(logrus.Fields{
-		"peer":      pid.String(),
-		"direction": direction,
-		"want":      len(bmsg.Wantlist()),
-		"have":      len(bmsg.Haves()),
-		"dont-have": len(bmsg.DontHaves()),
-		"blocks":    len(bmsg.Blocks()),
-		"origin":    OriginBitswap,
-	}).Debug("more cids tracked from bitswap")
+	slog.Debug("more cids tracked from bitswap",
+		"peer", pid.String(),
+		"direction", direction,
+		"want", len(bmsg.Wantlist()),
+		"have", len(bmsg.Haves()),
+		"dont-have", len(bmsg.DontHaves()),
+		"blocks", len(bmsg.Blocks()),
+		"origin", OriginBitswap,
+	)
 
 	t.cidC <- sharedCids
 }
 
 func (t *CidTracer) dhtRequestTracer(ctx context.Context, s network.Stream, req *dht_pb.Message) {
-	// unwrap the record and get the cid
 	providerId := s.Conn().RemotePeer()
 
 	var sharedCid SharedCid
@@ -143,10 +140,11 @@ func (t *CidTracer) dhtRequestTracer(ctx context.Context, s network.Stream, req 
 	case dht_pb.Message_ADD_PROVIDER:
 		cid, err = handleAddProvider(providerId, req)
 		if err != nil {
-			t.log.WithFields(logrus.Fields{
-				"key":         string(req.Key),
-				"remote-peer": providerId.String(),
-			}).Errorf("dht: unable to extract the cid from given key - %s", err.Error())
+			slog.Error("dht: unable to extract the cid from given key",
+				"key", string(req.Key),
+				"remote-peer", providerId.String(),
+				"err", err,
+			)
 			return
 		}
 		sharedCid = SharedCid{
@@ -162,10 +160,11 @@ func (t *CidTracer) dhtRequestTracer(ctx context.Context, s network.Stream, req 
 	case dht_pb.Message_GET_PROVIDERS:
 		cid, err = handleGetProvider(req)
 		if err != nil {
-			t.log.WithFields(logrus.Fields{
-				"key":         string(req.Key),
-				"remote-peer": providerId.String(),
-			}).Errorf("dht: unable to extract the cid from given key - %s", err.Error())
+			slog.Error("dht: unable to extract the cid from given key",
+				"key", string(req.Key),
+				"remote-peer", providerId.String(),
+				"err", err,
+			)
 			return
 		}
 		sharedCid = SharedCid{
@@ -179,18 +178,18 @@ func (t *CidTracer) dhtRequestTracer(ctx context.Context, s network.Stream, req 
 		}
 
 	default:
-		t.log.WithField("type", dht_pb.Message_MessageType_name[int32(req.Type)]).Trace("dropping not relevant dht message...")
+		slog.Debug("dropping not relevant dht message...", "type", dht_pb.Message_MessageType_name[int32(req.Type)])
 		return
 	}
 
-	t.log.WithFields(logrus.Fields{
-		"peer":      providerId.String(),
-		"key":       sharedCid.Cid,
-		"op":        sharedCid.Type,
-		"direction": "received",
-		"providers": len(req.ProviderPeers),
-		"origin":    OriginDHT,
-	}).Debug("more cids tracked from the DHT server")
+	slog.Debug("more cids tracked from the DHT server",
+		"peer", providerId.String(),
+		"key", sharedCid.Cid,
+		"op", sharedCid.Type,
+		"direction", "received",
+		"providers", len(req.ProviderPeers),
+		"origin", OriginDHT,
+	)
 
 	sharedCids := make([]SharedCid, 1)
 	sharedCids[0] = sharedCid
@@ -220,13 +219,11 @@ func handleAddProvider(p peer.ID, pmes *dht_pb.Message) (cid.Cid, error) {
 		return cid.Cid{}, fmt.Errorf("provider_record: no valid provider")
 	}
 
-	// conver key to multihash
 	keyMH, err := multihash.Cast(key)
 	if err != nil {
 		return cid.Cid{}, fmt.Errorf("provider_record: no valid multihash for key - %s", err.Error())
 	}
 
-	// conver the key into a CID
 	return cid.NewCidV1(uint64(multicodec.Raw), keyMH), nil
 }
 
@@ -238,7 +235,6 @@ func handleGetProvider(pmes *dht_pb.Message) (cid.Cid, error) {
 		return cid.Cid{}, fmt.Errorf("provider_records: key is empty")
 	}
 
-	// conver key to multihash
 	keyMH, err := multihash.Cast(key)
 	if err != nil {
 		return cid.Cid{}, fmt.Errorf("provider_record: no valid multihash for key - %s", err.Error())
@@ -248,6 +244,5 @@ func handleGetProvider(pmes *dht_pb.Message) (cid.Cid, error) {
 		return cid.Cid{}, fmt.Errorf("provider_record: no valid decoded multihash for key - %s", err.Error())
 	}
 
-	// conver the key into a CID
 	return cid.NewCidV1(decodedKeyMH.Code, keyMH), nil
 }
