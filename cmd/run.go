@@ -22,7 +22,6 @@ var runConfig = struct {
 	ConnectionTimeout time.Duration
 	CacheSize         int
 	BatcherSize       int
-	Flushers          int
 	LevelDB           string
 	DiscoveryInterval time.Duration
 	ConnectionsLow    int
@@ -35,7 +34,6 @@ var runConfig = struct {
 	ConnectionTimeout: 15 * time.Second,
 	CacheSize:         0,
 	BatcherSize:       1_024,
-	Flushers:          5,
 	LevelDB:           "./ds",
 	DiscoveryInterval: 1 * time.Minute,
 	ConnectionsLow:    1_000,
@@ -115,13 +113,6 @@ var runFlags = []cli.Flag{
 		Sources:     cli.EnvVars(envPrefix + "BATCHER_SIZE"),
 	},
 	&cli.IntFlag{
-		Name:        "ch.flushers",
-		Usage:       "Number of go-routines that will be flushing cids into the DB",
-		Value:       runConfig.Flushers,
-		Destination: &runConfig.Flushers,
-		Sources:     cli.EnvVars(envPrefix + "CH_FLUSHERS"),
-	},
-	&cli.IntFlag{
 		Name:        "connections.low",
 		Usage:       "The low water mark for the connection manager.",
 		Value:       runConfig.ConnectionsLow,
@@ -147,7 +138,6 @@ func scanAction(ctx context.Context, cmd *cli.Command) error {
 		"batcher-size", runConfig.BatcherSize,
 		"level-db", runConfig.LevelDB,
 		"discv-interval", runConfig.DiscoveryInterval,
-		"ch-flushers", runConfig.Flushers,
 		"ch-host", runConfig.ClickhouseConfig.BaseConfig.Host,
 		"ch-port", runConfig.ClickhouseConfig.BaseConfig.Port,
 		"ch-user", runConfig.ClickhouseConfig.BaseConfig.User,
@@ -183,7 +173,6 @@ func scanAction(ctx context.Context, cmd *cli.Command) error {
 		ClickHouseConfig:           *runConfig.ClickhouseConfig,
 		ClickHouseMigrationsConfig: *runConfig.MigrationsConfig,
 		BatchSize:                  runConfig.BatcherSize,
-		Flushers:                   runConfig.Flushers,
 		Telemetry:                  otel.GetMeterProvider(),
 	}
 	chCli, err := bitswap.NewClickhouseDB(conDetails, log)
