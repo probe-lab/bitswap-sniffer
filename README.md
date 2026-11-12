@@ -1,116 +1,105 @@
 # Bitswap Sniffer
 
 [![ProbeLab](https://img.shields.io/badge/made%20by-ProbeLab-blue.svg)](https://probelab.io)
-[![Build status](https://img.shields.io/github/actions/workflow/status/probe-lab/bitswap-sniffer/go-check.yml?branch=main)](https://github.com/probe-lab/bitswap-sniffer/actions)
-[![Docker Image](https://img.shields.io/github/actions/workflow/status/probe-lab/bitswap-sniffer/push.yml?branch=main)](https://github.com/probe-lab/bitswap-sniffer/actions)
+[![CI](https://img.shields.io/github/actions/workflow/status/probe-lab/bitswap-sniffer/ci.yml?branch=main)](https://github.com/probe-lab/bitswap-sniffer/actions/workflows/ci.yml)
 
-The `bitswap-sniffer` is a tool that, as its name describes, sniffs CIDs in the IPFS network using the Bitswap protocol. The tool attempts to connect to as many peers as possible, listening and then listing CIDs requested through IWANT messages by remote nodes.
+`bitswap-sniffer` records the CIDs that peers of the IPFS network ask for and announce. It runs a libp2p host with a DHT client and Bitswap, connects to as many peers as it can, and logs every CID in the Bitswap messages it sends and receives (`want`, `have`, `dont-have`, `block`) and in DHT provider record requests. The CIDs go to the ClickHouse table `shared_cids`. The tool applies the schema migrations itself.
 
-## Requirements
-- `Go >=1.24`
-- (Recommended) [Just](https://github.com/casey/just)
-- Access to a Clickhouse Database (the tool takes care of the schema migrations)
+## Quickstart
 
-## Installation
+You need Go 1.26, [just](https://github.com/casey/just) and Docker.
 
-We provide a `Justfile` that simplifies installation and building. Use the following commands:
-```bash
-# To build the tool locally -> binary at ./build/bitswap-sniffer
-$ just build
+```sh
+cp .env.example .env   # local settings that match docker-compose.yml
+just clickhouse-up     # ClickHouse on 127.0.0.1:9000
+just run               # go run ./cmd run
 ```
 
-## Usage
+`just build` writes the binary to `build/bitswap-sniffer`. `./build/bitswap-sniffer run --help` lists the flags.
 
-The tool exposes a single CLI command. Basic usage:
-```bash
-$ ./build/bitswap-sniffer --help
+## Configuration
 
-NAME:
-   bitsniffer - Connects to the IPFS DHT and sniffs bitswap traffic
+Every flag has an environment variable with the prefix `BITSNIFFER_`. `.env.example` lists them all.
 
-USAGE:
-   bitsniffer [global options] [command [command options]]
+| Flag | Environment variable | Default | Description |
+| --- | --- | --- | --- |
+| `--libp2p.host` | `BITSNIFFER_LIBP2P_HOST` | `127.0.0.1` | IP of the libp2p host |
+| `--libp2p.port` | `BITSNIFFER_LIBP2P_PORT` | `9020` | Port of the libp2p host |
+| `--connection.timeout` | `BITSNIFFER_CONNECTION_TIMEOUT` | `15s` | Timeout of a connection attempt |
+| `--connections.low` | `BITSNIFFER_CONNECTIONS_LOW` | `1000` | Low watermark of the connection manager |
+| `--connections.high` | `BITSNIFFER_CONNECTIONS_HIGH` | `8000` | High watermark of the connection manager |
+| `--discovery.interval` | `BITSNIFFER_DISCOVERY_INTERVAL` | `1m0s` | Interval between DHT peer discovery lookups |
+| `--cache.size` | `BITSNIFFER_CACHE_SIZE` | `0` | Size of the CID cache |
+| `--batcher.size` | `BITSNIFFER_BATCHER_SIZE` | `1024` | Rows to collect before a write to ClickHouse |
+| `--ds.path` | `BITSNIFFER_LEVEL_DB` | `./ds` | Path of the LevelDB datastore |
+| `--clickhouse.host` | `BITSNIFFER_CLICKHOUSE_HOST` | `127.0.0.1` | ClickHouse host |
+| `--clickhouse.port` | `BITSNIFFER_CLICKHOUSE_PORT` | `9000` | ClickHouse native port |
+| `--clickhouse.user` | `BITSNIFFER_CLICKHOUSE_USER` | `bitswap_sniffer_db` | ClickHouse user |
+| `--clickhouse.password` | `BITSNIFFER_CLICKHOUSE_PASSWORD` | `password` | ClickHouse password |
+| `--clickhouse.database` | `BITSNIFFER_CLICKHOUSE_DATABASE` | `bitswap_sniffer_db` | ClickHouse database |
+| `--clickhouse.ssl` | `BITSNIFFER_CLICKHOUSE_SSL` | `false` | Connect to ClickHouse with TLS |
+| `--clickhouse.cluster` | `BITSNIFFER_CLICKHOUSE_CLUSTER` | | ClickHouse cluster name |
+| `--clickhouse.migrationsTable` | `BITSNIFFER_CLICKHOUSE_MIGRATIONS_TABLE` | `schema_migrations` | Table that records the applied migrations |
+| `--clickhouse.migrationsTableEngine` | `BITSNIFFER_CLICKHOUSE_MIGRATIONS_TABLE_ENGINE` | `TinyLog` | Engine of the migrations table |
+| `--clickhouse.migrations.multiStatement` | `BITSNIFFER_CLICKHOUSE_MIGRATIONS_MULTI_STATEMENT` | `false` | Apply migrations in multi-statement mode |
+| `--clickhouse.migrations.multiStatementMaxSize` | `BITSNIFFER_CLICKHOUSE_MIGRATIONS_MULTI_STATEMENT_MAX_SIZE` | `10485760` | Maximum size of a multi-statement |
+| `--clickhouse.migrations.replicatedTableEngines` | `BITSNIFFER_CLICKHOUSE_MIGRATIONS_REPLICATED_TABLE_ENGINES` | `false` | Use `Replicated*` table engines. Production sets `true`. |
+| `--log.level` | `BITSNIFFER_LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error` |
+| `--log.format` | `BITSNIFFER_LOG_FORMAT` | `text` | `text` or `json` |
+| `--log.source` | `BITSNIFFER_LOG_SOURCE` | `false` | Add the source position to each log line |
+| `--metrics.enabled` | `BITSNIFFER_METRICS_ENABLED` | `false` | Serve Prometheus metrics |
+| `--metrics.host` | `BITSNIFFER_METRICS_HOST` | `localhost` | Interface of the metrics endpoint |
+| `--metrics.port` | `BITSNIFFER_METRICS_PORT` | `6060` | Port of the metrics endpoint |
+| `--metrics.path` | `BITSNIFFER_METRICS_PATH` | `/metrics` | Path of the metrics endpoint |
+| `--tracing.enabled` | `BITSNIFFER_TRACING_ENABLED` | `false` | Emit traces |
+| `--aws.region` | `AWS_REGION` | | AWS region the service runs in |
 
-COMMANDS:
-   run      Connects and scans a given node for its custody and network status
-   help, h  Shows a list of commands or help for one command
+## Metrics
 
-GLOBAL OPTIONS:
-   --help, -h  show help
+With `BITSNIFFER_METRICS_ENABLED=true`, the sniffer serves Prometheus metrics on `BITSNIFFER_METRICS_HOST:BITSNIFFER_METRICS_PORT` at `/metrics`. The names carry the prefix `bitsniffer_`. Units are not set yet, and some names do not follow the ProbeLab naming rules.
 
-   Logging Configuration:
+| Metric | Type | Unit | Labels | Description |
+| --- | --- | --- | --- | --- |
+| `bitsniffer_total_seen_cids_total` | counter | none | `direction`: `sent`, `received`; `origin`: `bitswap`, `dht`; `msg_type`: `want`, `have`, `dont-have`, `block`, `add-provider-records`, `get-provider-records` | CIDs seen |
+| `bitsniffer_unique_cids_by_msg_type_total` | counter | none | none | CIDs not yet in the CID cache |
+| `bitsniffer_bitswap_peer_count` | gauge | none | none | Peers connected at the Bitswap level |
+| `bitsniffer_bitswap_stats` | gauge | none | `type`: `sent`, `received` | Bitswap message stats. `type="sent"` holds the received message count and `type="received"` the sent data size (`bitswap/sniffer.go`). |
+| `bitsniffer_bitswap_want_list` | gauge | none | `type`: `cid-want-list` | CIDs in the sniffer's own want-list |
+| `bitsniffer_datastore_disk_usage` | gauge | bytes, not declared | none | Disk usage of the LevelDB datastore |
+| `bitsniffer_lookups_total` | counter | none | `success`: `true`, `false` | DHT peer discovery lookups |
+| `bitsniffer_batch_inserter_rows_flushed_total` | counter | none | `table` | Rows written to ClickHouse |
+| `bitsniffer_batch_inserter_rows_dropped_total` | counter | none | `table` | Rows dropped by a failed write |
+| `bitsniffer_batch_inserter_flush_duration_seconds` | histogram | seconds | `table`, `trigger` | Duration of a write |
+| `bitsniffer_batch_inserter_flush_size` | histogram | none | `table`, `trigger` | Rows in a write |
 
-   --log.format string  Sets the format to output the log statements in: text, json (default: "text") [$BITSNIFFER_LOG_FORMAT]
-   --log.level string   Sets an explicit logging level: debug, info, warn, error. (default: "info") [$BITSNIFFER_LOG_LEVEL]
-   --log.source         Compute the source code position of a log statement and add a SourceKey attribute to the output. [$BITSNIFFER_LOG_SOURCE]
+The `batch_inserter` metrics come from the ClickHouse batch inserter of go-commons. No Grafana dashboard is linked here yet.
 
-   Telemetry Configuration:
+## Development
 
-   --aws.region string    The AWS region that this service runs in. [$AWS_REGION]
-   --metrics.enabled      Whether to expose metrics information [$BITSNIFFER_METRICS_ENABLED]
-   --metrics.host string  Which network interface should the metrics endpoint bind to (default: "localhost") [$BITSNIFFER_METRICS_HOST]
-   --metrics.path string  On which path should the metrics endpoint listen (default: "/metrics") [$BITSNIFFER_METRICS_PATH]
-   --metrics.port int     On which port should the metrics endpoint listen (default: 6060) [$BITSNIFFER_METRICS_PORT]
-   --tracing.enabled      Whether to emit trace data [$BITSNIFFER_TRACING_ENABLED]
-```
+| Command | Does |
+| --- | --- |
+| `just` | Lists the recipes |
+| `just build` | Builds `build/bitswap-sniffer` |
+| `just test` | Runs the tests. They need ClickHouse on `127.0.0.1:9000` with user `username`, password `password` and database `bitswap_sniffer_ipfs`. |
+| `just lint` | Checks formatting, `go fix`, `go vet` and `staticcheck`. The `justfile` pins the tool versions. |
+| `just format` | Formats the code and applies `go fix` |
+| `just ci` | Runs `lint`, `build` and `test`, as CI does |
+| `just run` | Runs the sniffer with the settings in `.env` |
+| `just docker` | Builds the linux/amd64 image with the tag CI uses |
+| `just clickhouse-up`, `just clickhouse-down`, `just clickhouse-rm` | Start, stop and remove the local ClickHouse |
 
-Run command:
-```bash
-NAME:
-   bitsniffer run - Connects and scans a given node for its custody and network status
+`docker compose up -d prometheus` starts a local Prometheus that scrapes `127.0.0.1:9080`, the metrics port in `.env.example`.
 
-USAGE:
-   bitsniffer run [options]
+## Deployment
 
-OPTIONS:
-   --batcher.size int             Maximum number of items that will be cached before persisting into the DB (default: 1024) [$BITSNIFFER_BATCHER_SIZE]
-   --cache.size int               Size for the CID cache (default: 0) [$BITSNIFFER_CACHE_SIZE]
-   --connection.timeout duration  Timeout for the connection attempt to the node (default: 15s) [$BITSNIFFER_CONNECTION_TIMEOUT]
-   --connections.high int         The high water mark for the connection manager. (default: 8000) [$BITSNIFFER_CONNECTIONS_HIGH]
-   --connections.low int          The low water mark for the connection manager. (default: 1000) [$BITSNIFFER_CONNECTIONS_LOW]
-   --discovery.interval duration  Interval between dht peer discovery lookups (default: 1m0s) [$BITSNIFFER_DISCOVERY_INTERVAL]
-   --ds.path string               Path to the LevelDB datastore (default: "./ds") [$BITSNIFFER_LEVEL_DB]
-   --help, -h                     show help
-   --libp2p.host string           IP for the Libp2p host (default: "127.0.0.1") [$BITSNIFFER_LIBP2P_HOST]
-   --libp2p.port int              Port for the Libp2p host (default: 9020) [$BITSNIFFER_LIBP2P_PORT]
+ProbeLab runs one instance for the IPFS mainnet as the ECS service `prod-use1-cmi-bitsniffer` in the cluster `prod-use1-cmi-ecs-cluster` (us-east-1). It writes to the ClickHouse database `bitswap_sniffer_ipfs`. The service and its task definition are in [probelab-infra](https://github.com/probe-lab/probelab-infra): `tf/modules/bitswap_sniffer` and `tf/bitsniffer.tf`.
 
-   Database Configuration:
-
-   --clickhouse.cluster string                        The cluster name of the Clickhouse service. [$BITSNIFFER_CLICKHOUSE_CLUSTER]
-   --clickhouse.database string                       The ClickHouse database name to connect to (default: "bitswap_sniffer_db") [$BITSNIFFER_CLICKHOUSE_DATABASE]
-   --clickhouse.host string                           The address where ClickHouse is hosted (default: "127.0.0.1") [$BITSNIFFER_CLICKHOUSE_HOST]
-   --clickhouse.migrations.multiStatement             Whether to use multi-statement mode when applying migrations. [$BITSNIFFER_CLICKHOUSE_MIGRATIONS_MULTI_STATEMENT]
-   --clickhouse.migrations.multiStatementMaxSize int  The maximum size of a multi-statement. (default: 10485760) [$BITSNIFFER_CLICKHOUSE_MIGRATIONS_MULTI_STATEMENT_MAX_SIZE]
-   --clickhouse.migrations.replicatedTableEngines     Whether to use replicated table engines. [$BITSNIFFER_CLICKHOUSE_MIGRATIONS_REPLICATED_TABLE_ENGINES]
-   --clickhouse.migrationsTable string                The name of the migrations table. (default: "schema_migrations") [$BITSNIFFER_CLICKHOUSE_MIGRATIONS_TABLE]
-   --clickhouse.migrationsTableEngine string          The engine of the migrations table. (default: "TinyLog") [$BITSNIFFER_CLICKHOUSE_MIGRATIONS_TABLE_ENGINE]
-   --clickhouse.password string                       The password for the ClickHouse user (default: "password") [$BITSNIFFER_CLICKHOUSE_PASSWORD]
-   --clickhouse.port int                              Port at which the ClickHouse database is accessible (default: 9000) [$BITSNIFFER_CLICKHOUSE_PORT]
-   --clickhouse.ssl                                   Whether to use SSL to connect to ClickHouse [$BITSNIFFER_CLICKHOUSE_SSL]
-   --clickhouse.user string                           The ClickHouse user that has the right privileges (default: "username") [$BITSNIFFER_CLICKHOUSE_USER]
-
-GLOBAL OPTIONS:
-   --log.level string     Sets an explicit logging level: debug, info, warn, error. (default: "info") [$BITSNIFFER_LOG_LEVEL]
-   --log.format string    Sets the format to output the log statements in: text, json (default: "text") [$BITSNIFFER_LOG_FORMAT]
-   --log.source           Compute the source code position of a log statement and add a SourceKey attribute to the output. [$BITSNIFFER_LOG_SOURCE]
-   --metrics.enabled      Whether to expose metrics information [$BITSNIFFER_METRICS_ENABLED]
-   --metrics.host string  Which network interface should the metrics endpoint bind to (default: "localhost") [$BITSNIFFER_METRICS_HOST]
-   --metrics.port int     On which port should the metrics endpoint listen (default: 6060) [$BITSNIFFER_METRICS_PORT]
-   --metrics.path string  On which path should the metrics endpoint listen (default: "/metrics") [$BITSNIFFER_METRICS_PATH]
-   --tracing.enabled      Whether to emit trace data [$BITSNIFFER_TRACING_ENABLED]
-   --aws.region string    The AWS region that this service runs in. [$AWS_REGION]
-```
-
-> Note: `clickhouse.migrations.replicatedTableEngines` replaces the old `ch.driver local|replicated` flag (`--clickhouse.migrations.replicatedTableEngines` is equivalent to `ch.driver=replicated`).
-
-Example of how to use it:
-```bash
-# easy run with just its default values
-just run
-```
+`ci.yml` builds the image `bitswap-sniffer-sha<commit>` of every merge to `main`. A merge deploys when its pull request has the label `deploy`. To deploy any commit by hand, run `just deploy <commit>` or start the CI workflow from the Actions tab with the flag `deploy`.
 
 ## Maintainers
+
 [@cortze](https://github.com/cortze) from [@probe-lab](https://github.com/probe-lab)
 
-## Contributing
-Due to the debugging and research nature of the project, feedback and feature suggestions are very welcome. Feel free to open an issue or submit a pull request.
+## License
+
+[PolyForm Strict License 1.0.0](LICENSE)
