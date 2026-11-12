@@ -1,50 +1,64 @@
-GOCC := "go"
-BIN := "./cmd"
-TARGET_PATH := "./build/bitswap-sniffer"
+# Task runner. `just` lists the recipes; CI runs `just ci`.
 
-GIT_PACKAGE := "github.com/probe-lab/bitswap-sniffer"
-REPO_SERVER := "019120760881.dkr.ecr.us-east-1.amazonaws.com"
-COMMIT := `git rev-parse --short HEAD`
-DATE := `date "+%Y-%m-%dT%H:%M:%SZ"`
+# The lint tools, pinned here so a person and CI run the same versions.
+gofumpt := "go run mvdan.cc/gofumpt@v0.12.0"
+staticcheck := "go run honnef.co/go/tools/cmd/staticcheck@2026.2.2"
 
+# The image CI pushes for a commit: bitswap-sniffer-sha<commit>. A dirty tree gets -dirty.
+registry := "019120760881.dkr.ecr.us-east-1.amazonaws.com"
+image := registry + "/probelab:bitswap-sniffer-sha" + `git rev-parse --short=7 HEAD` + `git diff --quiet HEAD || echo -dirty`
 
+# List the recipes
 default:
-    @just --list --justfile {{ justfile() }}
+    @just --list
 
-run:
-    {{GOCC}} run {{BIN}} run
-
+# Build the binary to build/bitswap-sniffer
 build:
-	{{GOCC}} build -o {{TARGET_PATH}} {{BIN}}
+    go build -o build/bitswap-sniffer ./cmd
 
-clean:
-	@rm -r $(BIN_PATH)
+# Run the tests. They need ClickHouse on 127.0.0.1:9000 (just clickhouse-up)
+test *args:
+    go test ./... {{ args }}
 
-format:
-	{{GOCC}} fmt ./...
-	{{GOCC}} mod tidy -v
-
+# Check formatting, go fix, vet, and staticcheck without changing files
 lint:
-	{{GOCC}} mod verify
-	{{GOCC}} vet ./...
-	{{GOCC}} run honnef.co/go/tools/cmd/staticcheck@latest ./...
-	{{GOCC}} test -race -buildvcs -vet=off ./...
+    @test -z "$({{ gofumpt }} -l .)" || { echo "not formatted, run just format:"; {{ gofumpt }} -l .; exit 1; }
+    @d=$(go fix -diff ./...) && test -z "$d" || { echo "$d"; echo "go fix changes pending, run just format"; exit 1; }
+    go vet ./...
+    {{ staticcheck }} ./...
 
-test:
-    go test ./bitswap/...
+# Format the code and apply go fix in place
+format:
+    {{ gofumpt }} -w .
+    go fix ./...
 
+# Run everything CI runs
+ci: lint build test
+
+# Check, build and deploy a commit (default: newest on main) to ECS through ci.yml
+deploy commit="" skip-checks="false":
+    gh workflow run ci.yml -f commit={{ commit }} -f deploy=true -f skip-checks={{ skip-checks }}
+
+# Run the sniffer with the default settings
+run:
+    go run ./cmd run
+
+# Remove the build output
+clean:
+    rm -rf build
+
+# Build the linux/amd64 image with the tag CI uses
 docker:
-	docker build -t probe-lab/bitswap-sniffer:latest -t probe-lab/bitswap-sniffer-{{COMMIT}} -t {{REPO_SERVER}}/probelab:bitswap-sniffer-{{COMMIT}} .
+    docker build --platform linux/amd64 -t {{ image }} .
 
-docker-push:
-	docker push {{REPO_SERVER}}/probelab:bitswap-sniffer-{{COMMIT}}
-	docker rmi {{REPO_SERVER}}/probelab:bitswap-sniffer-{{COMMIT}}
-
+# Start ClickHouse in Docker
 clickhouse-up:
     docker compose up -d clickhouse
 
-clikchouse-down:
+# Stop ClickHouse
+clickhouse-down:
     docker compose stop clickhouse
 
-clikchouse-rm:
+# Remove the ClickHouse container
+clickhouse-rm:
     docker compose rm clickhouse
