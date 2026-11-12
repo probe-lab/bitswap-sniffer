@@ -173,7 +173,6 @@ func scanAction(ctx context.Context, cmd *cli.Command) error {
 	chCli, err := bitswap.NewClickhouseDB(conDetails)
 	if err != nil {
 		return errors.Wrap(err, "opening ch db")
-
 	}
 
 	sniffer, err := bitswap.NewSniffer(ctx, snifferConfig, ds, chCli)

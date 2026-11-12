@@ -89,6 +89,7 @@ func (d *Discovery) Serve(ctx context.Context) (err error) {
 		}
 	}
 }
+
 func (d *Discovery) initMetrics() error {
 	var err error
 	meter := d.cfg.Telemetry.Meter("discovery")
