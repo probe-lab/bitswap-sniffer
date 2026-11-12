@@ -1,5 +1,8 @@
 # Task runner. `just` lists the recipes; CI runs `just ci`.
 
+# Recipes read the settings in .env, if it exists (cp .env.example .env).
+set dotenv-load
+
 # The lint tools, pinned here so a person and CI run the same versions.
 gofumpt := "go run mvdan.cc/gofumpt@v0.12.0"
 staticcheck := "go run honnef.co/go/tools/cmd/staticcheck@2026.2.2"
