@@ -59,8 +59,8 @@ func NewSniffer(
 	ctx context.Context,
 	config *SnifferConfig,
 	ds *leveldb.Datastore,
-	db *ClickhouseDB) (*Sniffer, error) {
-
+	db *ClickhouseDB,
+) (*Sniffer, error) {
 	cidC := make(chan []SharedCid)
 
 	bs := blockstore.NewBlockstore(ds)
@@ -191,7 +191,6 @@ func (s *Sniffer) Serve(ctx context.Context) error {
 		if err != nil {
 			slog.Error("closing db", "err", err)
 		}
-
 	}()
 
 	go s.discovery.Serve(ctx)

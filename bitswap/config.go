@@ -103,7 +103,7 @@ func (c *SnifferConfig) DHTClientOptions() ([]kaddht.Option, error) {
 }
 
 func (c *SnifferConfig) CreateDatastore(ctx context.Context) (*leveldb.Datastore, error) {
-	_ = os.Mkdir(c.LevelDB, 0777) // create the folder and ignore if there was an issue
+	_ = os.Mkdir(c.LevelDB, 0o777) // create the folder and ignore if there was an issue
 	ds, err := leveldb.NewDatastore(c.LevelDB, nil)
 	if err != nil {
 		return nil, err
